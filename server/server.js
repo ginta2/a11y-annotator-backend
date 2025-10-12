@@ -1,9 +1,14 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
 
 const app = express();
-const PORT = process.env.PORT || 8787;
+const KEY = (process.env.OPENAI_API_KEY || '').trim();
+const MODEL = process.env.MODEL || 'gpt-4o-mini';
+const PORT = Number(process.env.PORT || 8787);
 
 app.use(cors());
 app.use(bodyParser.json({ limit: "10mb" }));
@@ -11,9 +16,11 @@ app.use(bodyParser.json({ limit: "10mb" }));
 app.get("/health", (_, res) => {
   res.json({
     status: "healthy",
-    hasKey: Boolean(process.env.OPENAI_API_KEY),
-    model: process.env.MODEL || "gpt-4o-mini",
-    version: "1.0.0"
+    hasKey: Boolean(KEY),
+    model: MODEL,
+    port: PORT,
+    version: "1.0.0",
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -31,7 +38,7 @@ app.post("/annotate", async (req, res) => {
         { id: 3, label: "Input: Enter Name" }
       ],
       platform,
-      model: process.env.MODEL || "gpt-4o-mini"
+      model: MODEL
     };
 
     res.json(response);
@@ -43,4 +50,7 @@ app.post("/annotate", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`[SRV] Listening on http://localhost:${PORT}`);
+  console.log(`[SRV] Model: ${MODEL}`);
+  console.log(`[SRV] OpenAI Key: ${KEY ? '✓ loaded' : '✗ missing'}`);
+  console.log(`[SRV] Health check: http://localhost:${PORT}/health`);
 });
