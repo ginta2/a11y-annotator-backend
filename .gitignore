@@ -1,0 +1,24 @@
+.DS_Store
+node_modules
+.env
+server/.env
+
+# Ignore env files
+.env
+*.env
+server/.env*
+
+# Ignore env files
+.env
+*.env
+server/.env*
+
+# Ignore env files
+.env
+*.env
+server/.env*
+
+# Ignore env files
+.env
+*.env
+server/.env*

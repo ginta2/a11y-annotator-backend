@@ -1,0 +1,146 @@
+// server.js
+const express = require('express');
+const cors = require('cors');
+const OpenAI = require('openai');
+require('dotenv').config();
+
+const app = express();
+const PORT = process.env.PORT || 8787;
+const MODEL = process.env.MODEL || 'gpt-4o-mini';
+
+// --- Middleware
+app.use(cors({ origin: true }));
+app.use(express.json({ limit: '12mb' }));
+
+// --- OpenAI client
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+// --- Health
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0'
+  });
+});
+
+// --- Annotate (main endpoint)
+app.post('/annotate', async (req, res) => {
+  try {
+    const { platform = 'web', imageBase64 = '' } = req.body || {};
+
+    if (!openai) {
+      return res.status(500).json({
+        ok: false,
+        items: [],
+        specMeta: { platform, error: 'OPENAI_API_KEY missing in environment' }
+      });
+    }
+
+    // Build prompts
+    const sysPrompt = [
+      "You are an accessibility focus-order annotator.",
+      "Goal: Propose a keyboard/tab focus order for the provided mockup image.",
+      "Rules:",
+      "- Identify interactive controls (buttons, links, inputs, toggles).",
+      "- Use natural visual reading order for the chosen platform.",
+      "- If platform = 'rn' (React Native), assume a mobile screen.",
+      "- If platform = 'web', assume desktop web (ARIA).",
+      "",
+      "Return STRICT JSON ONLY (no markdown). Shape:",
+      "{",
+      '  "items": [',
+      '    { "id": "auto-1", "label": "Start", "reason": "Primary call-to-action bottom-right" }',
+      "  ],",
+      '  "specMeta": { "platform": "__PLATFORM__", "confidence": "low|medium|high" }',
+      "}"
+    ].join("\n");
+
+    const userPrompt = [
+      `Platform: ${platform}`,
+      "Task: Output ONLY the JSON as specified (no code fences).",
+      "If unsure, still return valid JSON with an empty items array and an explanation in specMeta.note."
+    ].join("\n");
+
+    // Prepare content for the Responses API
+    const systemContent = [{ type: "input_text", text: sysPrompt.replace("__PLATFORM__", platform) }];
+
+    const userContent = [{ type: "input_text", text: userPrompt }];
+
+    if (imageBase64 && imageBase64.length > 1000) {
+      // Ensure we have a proper data URL for the image
+      const dataUrl = imageBase64.startsWith('data:')
+        ? imageBase64
+        : `data:image/png;base64,${imageBase64}`;
+
+      userContent.push({
+        type: "input_image",
+        image_url: dataUrl
+      });
+    }
+
+    // ---- CALL OPENAI (Responses API) — NO response_format ----
+    let ai;
+    try {
+      ai = await openai.responses.create({
+        model: MODEL,
+        input: [
+          { role: "system", content: systemContent },
+          { role: "user", content: userContent }
+        ],
+        max_output_tokens: 700
+      });
+    } catch (err) {
+      console.error("[SRV] Error calling OpenAI:", err);
+      return res.status(500).json({
+        ok: false,
+        items: [],
+        specMeta: { platform, error: "OpenAI call failed", detail: String(err?.message || err) }
+      });
+    }
+
+    // Read model text
+    const rawText = ai?.output_text ?? "";
+    let data;
+
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      console.warn("[SRV] Model did not return strict JSON. Raw text:", rawText);
+      data = {
+        items: [],
+        specMeta: {
+          platform,
+          note: "Model did not return strict JSON. See rawText.",
+          rawText
+        }
+      };
+    }
+
+    // Normalize shape and send
+    return res.json({
+      ok: true,
+      items: Array.isArray(data.items) ? data.items : [],
+      specMeta: {
+        platform,
+        ...(data.specMeta || {})
+      }
+    });
+  } catch (err) {
+    console.error("[SRV] Unhandled /annotate error:", err);
+    return res.status(500).json({
+      ok: false,
+      items: [],
+      specMeta: { error: "Internal server error", detail: String(err?.message || err) }
+    });
+  }
+});
+
+// --- Start server
+app.listen(PORT, () => {
+  console.log(`A11y Annotator Backend running on port ${PORT}`);
+  console.log(`Health:   http://localhost:${PORT}/health`);
+  console.log(`Annotate: http://localhost:${PORT}/annotate`);
+});W

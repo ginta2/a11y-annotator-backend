@@ -1,0 +1,18 @@
+{
+  "name": "A11y Annotator - Focus Order v1.2",
+  "id": "a11y-annotator-focus-order-dev",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "capabilities": [],
+  "enableProposedApi": false,
+  "permissions": ["currentuser"],
+  "networkAccess": {
+    "allowedDomains": ["https://api.openai.com"],
+    "devAllowedDomains": [
+      "http://localhost:8787",
+      "http://127.0.0.1:8787"
+    ]
+  }
+}

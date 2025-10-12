@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>A11y Annotator</title>
+    <style>
+      body { font: 12px -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 12px; }
+      .row { margin-bottom: 8px; }
+      button { padding: 6px 10px; }
+      pre { background: #f6f6f6; padding: 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-word; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <label><input type="radio" name="platform" value="rn" checked /> React Native</label>
+      <label style="margin-left:12px;"><input type="radio" name="platform" value="web" /> Web (ARIA)</label>
+    </div>
+    <div class="row"><button id="proposeBtn">Propose Focus Order</button></div>
+    <div class="row"><textarea id="ariaPrompt" placeholder="ARIA prompt for web platform..." style="width:100%; height:60px;"></textarea></div>
+    <div class="row"><pre id="output"></pre></div>
+
+    <script>
+      document.getElementById('proposeBtn').onclick = () => {
+        const platform = document.querySelector('input[name="platform"]:checked').value; // 'rn' or 'web'
+        const text = (platform === 'web') ? (document.getElementById('ariaPrompt')?.value || "") : "";
+        parent.postMessage({ pluginMessage: { type: 'PROPOSE', platform, text } }, '*');
+      };
+
+      window.onmessage = (event) => {
+        const msg = event.data?.pluginMessage;
+        if (msg?.type === 'RESULT') {
+          console.log("Plugin result:", msg.payload);
+          const output = document.getElementById('output');
+          if (output) {
+            output.textContent = JSON.stringify(msg.payload, null, 2);
+          }
+        }
+      };
+    </script>
+  </body>
+</html>

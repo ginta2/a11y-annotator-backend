@@ -1,0 +1,33 @@
+---
+alwaysApply: true
+---
+rules:
+  # Workflow
+  - Break tasks into step-by-step plans before coding.
+  - Generate small, reviewable diffs. Don’t rewrite files unless asked.
+  - If requirements are unclear, ask clarifying questions first.
+
+  # Language & tooling
+  - Use TypeScript with strict typing.
+  - Use pnpm for install/build. Show commands when they change.
+  - Keep code modular: one responsibility per file.
+
+  # Plugin architecture
+  - controller.ts = handles Figma API + events.
+  - ui/ = React UI for sidebar.
+  - heuristics.ts = baseline focus order logic.
+  - overlay.ts = draws annotation overlays.
+  - spec.ts = schema + merge logic.
+  - types.ts = shared types.
+  - Persist annotations with frame.setPluginData('a11ySpec', JSON.stringify(spec)).
+
+  # Conventions
+  - Overlays go in a locked group named A11Y_ANNOTATIONS_{frameId}.
+  - Merge order: manual > ai > heuristic.
+  - Export JSON + Markdown specs with nodeId, idx, name, source, platform.
+  - Use async/await; don’t block the Figma main thread.
+
+  # Quality
+  - Add figma.notify for error states (empty selection, missing spec, AI error).
+  - Avoid heavy dependencies in the plugin UI. SortableJS is allowed.
+  - Wrap figma.loadFontAsync in try/catch to avoid crashes.
