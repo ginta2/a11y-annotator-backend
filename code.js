@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8787"; // Local backend for development
+const API_BASE = "https://a11y-annotator-backend.onrender.com";
 
 async function exportSelectedFrameAsBase64() {
   const selection = figma.currentPage.selection;

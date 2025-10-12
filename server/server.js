@@ -10,7 +10,12 @@ const KEY = (process.env.OPENAI_API_KEY || '').trim();
 const MODEL = process.env.MODEL || 'gpt-4o-mini';
 const PORT = Number(process.env.PORT || 8787);
 
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.options('*', cors());
 app.use(bodyParser.json({ limit: "10mb" }));
 
 app.get("/health", (_, res) => {
