@@ -21,9 +21,9 @@
 
     <script>
       document.getElementById('proposeBtn').onclick = () => {
-        const platform = document.querySelector('input[name="platform"]:checked').value; // 'rn' or 'web'
-        const text = (platform === 'web') ? (document.getElementById('ariaPrompt')?.value || "") : "";
-        parent.postMessage({ pluginMessage: { type: 'PROPOSE', platform, text } }, '*');
+        const currentPlatform = document.querySelector('input[name="platform"]:checked').value; // 'rn' or 'web'
+        const textAreaValue = (currentPlatform === 'web') ? (document.getElementById('ariaPrompt')?.value || "") : "";
+        parent.postMessage({ pluginMessage: { type: 'PROPOSE', platform: currentPlatform, textPrompt: textAreaValue }}, '*');
       };
 
       window.onmessage = (event) => {
