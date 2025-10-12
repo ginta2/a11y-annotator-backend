@@ -9,11 +9,12 @@
   "enableProposedApi": false,
   "permissions": ["currentuser"],
   "networkAccess": {
-    "allowedDomains": ["https://api.openai.com"],
+    "allowedDomains": [
+      "https://api.openai.com",
+      "https://a11y-annotator-backend.onrender.com"
+    ],
     "devAllowedDomains": [
-      "https://a11y-annotator-backend.onrender.com",
-      "http://localhost:8787/",
-      "http://127.0.0.1:8787/"
+      "http://localhost:8787/"
     ]
   }
 }
