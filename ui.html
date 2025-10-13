@@ -20,17 +20,28 @@
     <div class="row"><pre id="output"></pre></div>
 
     <script>
-      document.getElementById('proposeBtn').onclick = () => {
-        const currentPlatform = document.querySelector('input[name="platform"]:checked').value; // 'rn' or 'web'
-        const textAreaValue = (currentPlatform === 'web') ? (document.getElementById('ariaPrompt')?.value || "") : "";
-        parent.postMessage({ pluginMessage: { type: 'PROPOSE', platform: currentPlatform, textPrompt: textAreaValue }}, '*');
+      function getSelectedPlatform() {
+        var checked = document.querySelector('input[name="platform"]:checked');
+        return checked ? checked.value : 'rn';
+      }
+
+      function getTextPrompt() {
+        var textarea = document.getElementById('ariaPrompt');
+        return textarea ? textarea.value : '';
+      }
+
+      document.getElementById('proposeBtn').onclick = function () {
+        var platform = getSelectedPlatform(); // 'web' or 'rn'
+        var textPrompt = getTextPrompt() || '';
+        parent.postMessage({ pluginMessage: { type: 'PROPOSE', platform: platform, textPrompt: textPrompt } }, '*');
       };
 
-      window.onmessage = (event) => {
-        const msg = event.data?.pluginMessage;
-        if (msg?.type === 'RESULT') {
-          console.log("Plugin result:", msg.payload);
-          const output = document.getElementById('output');
+      window.onmessage = function (e) {
+        var msg = e.data && e.data.pluginMessage;
+        if (!msg) return;
+        if (msg.type === 'RESULT') {
+          console.log('RESULT:', msg.payload);
+          var output = document.getElementById('output');
           if (output) {
             output.textContent = JSON.stringify(msg.payload, null, 2);
           }
