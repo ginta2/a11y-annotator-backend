@@ -1,6 +1,61 @@
 // code.js
-// Hosted API (note https, no trailing slash)
-const API = 'https://a11y-annotator-backend.onrender.com/annotate';
+// Safe network helper for Figma plugin runtime
+// Only uses allowed fetch init keys: method, headers, body
+
+const API_BASE = 'https://a11y-annotator-backend.onrender.com';
+const ANNOTATE_URL = `${API_BASE}/annotate`;
+
+/**
+ * Safe POST request using only Figma-allowed fetch init keys
+ * @param {string} url - Target URL
+ * @param {Object} data - JSON data to send
+ * @returns {Promise<Object>} Response JSON or text
+ */
+async function safePostJSON(url, data) {
+  // Ensure payload is JSON-serializable and light (no nodes attached)
+  if (!data || typeof data !== 'object') {
+    throw new Error('Payload must be a valid object');
+  }
+  
+  // Guard against accidentally sending Figma nodes (they're not JSON-serializable)
+  try {
+    JSON.stringify(data);
+  } catch (e) {
+    throw new Error('Payload contains non-serializable data (e.g., Figma nodes)');
+  }
+  
+  const init = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // IMPORTANT: Figma runtime allows ONLY method/headers/body
+    body: JSON.stringify(data),
+  };
+
+  // Debug: log exactly what we send (no illegal keys)
+  console.log('[net] POST', url, 'initKeys=', Object.keys(init));
+
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${text || res.statusText}`);
+  }
+  
+  // Attempt json, fallback to text
+  try {
+    return await res.json();
+  } catch {
+    return await res.text();
+  }
+}
+
+/**
+ * Convenience wrapper for annotate endpoint
+ * @param {Object} payload - Annotation payload
+ * @returns {Promise<Object>} API response
+ */
+async function annotate(payload) {
+  return safePostJSON(ANNOTATE_URL, payload);
+}
 
 figma.showUI(__html__, { width: 420, height: 520 });
 console.log('[A11y] boot v2');
@@ -75,27 +130,14 @@ async function runPropose(msg) {
 }
 
 async function callAnnotate(payload) {
-  console.log('[A11y] POST', API, { bodyKeys: Object.keys(payload || {}) });
+  console.log('[A11y] calling annotate API', { bodyKeys: Object.keys(payload || {}) });
   
-  const res = await fetch(API, {
-    method: 'POST',
-    mode: 'cors',
-    cache: 'no-store',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
-
-  // Helpful debug
-  // console.log('[annotate] status', res.status, 'ok?', res.ok);
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`annotate failed: ${res.status} ${text}`);
+  try {
+    const json = await annotate(payload);
+    console.log('[A11y] API ok', json);
+    figma.ui.postMessage({ type: 'RESULT', payload: json || { ok: true } });
+  } catch (error) {
+    console.error('[A11y] API error:', error);
+    figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, error: String(error) } });
   }
-  
-  const json = await res.json();
-  console.log('[A11y] API ok', json);
-  figma.ui.postMessage({ type: 'RESULT', payload: json || { ok: true } });
 }
