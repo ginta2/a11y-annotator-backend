@@ -1,5 +1,5 @@
 {
-  "name": "A11y Annotator - Focus Order v1.2",
+  "name": "A11y Annotator – Focus Order v1.2",
   "id": "a11y-annotator-focus-order-dev",
   "api": "1.0.0",
   "main": "code.js",
@@ -12,9 +12,6 @@
     "allowedDomains": [
       "https://api.openai.com",
       "https://a11y-annotator-backend.onrender.com"
-    ],
-    "devAllowedDomains": [
-      "http://localhost:8787/"
     ]
   }
 }

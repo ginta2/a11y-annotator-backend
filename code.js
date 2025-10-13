@@ -2,8 +2,7 @@
 // Safe network helper for Figma plugin runtime
 // Only uses allowed fetch init keys: method, headers, body
 
-const API_BASE = 'https://a11y-annotator-backend.onrender.com';
-const ANNOTATE_URL = `${API_BASE}/annotate`;
+const API = 'https://a11y-annotator-backend.onrender.com';
 
 /**
  * Safe POST request using only Figma-allowed fetch init keys
@@ -49,16 +48,30 @@ async function safePostJSON(url, data) {
 }
 
 /**
+ * Warm up the server to avoid cold-start timeouts
+ */
+async function warmUp() {
+  try { 
+    await fetch(`${API}/health`, { method: 'GET' }); 
+  } catch (_) {
+    // Ignore errors, this is just a warm-up call
+  }
+}
+
+/**
  * Convenience wrapper for annotate endpoint
  * @param {Object} payload - Annotation payload
  * @returns {Promise<Object>} API response
  */
 async function annotate(payload) {
-  return safePostJSON(ANNOTATE_URL, payload);
+  return safePostJSON(`${API}/annotate`, payload);
 }
 
 figma.showUI(__html__, { width: 420, height: 520 });
 console.log('[A11y] boot v2');
+
+// Call warm-up on plugin start
+warmUp();
 
 function isExportable(node) {
   if (!node) return false;
@@ -138,6 +151,8 @@ async function callAnnotate(payload) {
     figma.ui.postMessage({ type: 'RESULT', payload: json || { ok: true } });
   } catch (error) {
     console.error('[A11y] API error:', error);
-    figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, error: String(error) } });
+    const errorMsg = String(error).slice(0, 120);
+    figma.notify(`Network error: ${errorMsg}`);
+    figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, error: errorMsg } });
   }
 }
