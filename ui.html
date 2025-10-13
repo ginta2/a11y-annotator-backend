@@ -15,24 +15,34 @@
       <label><input type="radio" name="platform" value="rn" checked /> React Native</label>
       <label style="margin-left:12px;"><input type="radio" name="platform" value="web" /> Web (ARIA)</label>
     </div>
-    <div class="row"><button id="proposeBtn">Propose Focus Order</button></div>
-    <div class="row"><textarea id="ariaPrompt" placeholder="ARIA prompt for web platform..." style="width:100%; height:60px;"></textarea></div>
+    <div class="row">
+      <div id="status" style="font: 12px/1.4 ui-sans-serif, system-ui; margin-bottom: 8px;"></div>
+      <button id="proposeBtn">Propose Focus Order</button>
+    </div>
+    <div class="row"><textarea id="textPrompt" placeholder="ARIA prompt for web platform..." style="width:100%; height:60px;"></textarea></div>
     <div class="row"><pre id="output"></pre></div>
 
     <script>
-      function getSelectedPlatform() {
-        var checked = document.querySelector('input[name="platform"]:checked');
-        return checked ? checked.value : 'rn';
+      function setStatus(s, isError) {
+        var el = document.getElementById('status');
+        if (!el) return;
+        el.textContent = s;
+        el.style.color = isError ? '#b00020' : '#222';
       }
 
+      function getSelectedPlatform() {
+        var r = document.querySelector('input[name="platform"]:checked');
+        return (r && r.value) || 'web';
+      }
       function getTextPrompt() {
-        var textarea = document.getElementById('ariaPrompt');
-        return textarea ? textarea.value : '';
+        var t = document.getElementById('textPrompt');
+        return (t && t.value) || '';
       }
 
       document.getElementById('proposeBtn').onclick = function () {
-        var platform = getSelectedPlatform(); // 'web' or 'rn'
-        var textPrompt = getTextPrompt() || '';
+        setStatus('Sending…');
+        var platform = getSelectedPlatform();
+        var textPrompt = getTextPrompt();
         parent.postMessage({ pluginMessage: { type: 'PROPOSE', platform: platform, textPrompt: textPrompt } }, '*');
       };
 
@@ -40,10 +50,11 @@
         var msg = e.data && e.data.pluginMessage;
         if (!msg) return;
         if (msg.type === 'RESULT') {
-          console.log('RESULT:', msg.payload);
-          var output = document.getElementById('output');
-          if (output) {
-            output.textContent = JSON.stringify(msg.payload, null, 2);
+          try { console.log('[UI] RESULT', msg.payload); } catch (e) {}
+          if (!msg.payload || msg.payload.ok === false) {
+            setStatus('Error: ' + JSON.stringify(msg.payload), true);
+          } else {
+            setStatus('Done: ' + JSON.stringify(msg.payload));
           }
         }
       };

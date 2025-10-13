@@ -1,58 +1,104 @@
-// --- Safe ES5-compatible version ---
-// Always show the UI first
-figma.showUI(__html__, { width: 420, height: 480 });
-console.log('[A11y Annotator] boot');
+figma.showUI(__html__, { width: 420, height: 520 });
+console.log('[A11y] boot v2');
 
-// Handle messages from the UI
-figma.ui.onmessage = async function(msg) {
+function isExportable(node) {
+  if (!node) return false;
+  // Many nodes can export; guard typical non-exportables
+  var non = ['PAGE', 'DOCUMENT', 'SLICE']; // others usually fine
+  for (var i = 0; i < non.length; i++) if (node.type === non[i]) return false;
+  return typeof node.exportAsync === 'function';
+}
+
+function nearestExportable(node) {
+  var cur = node;
+  while (cur && !isExportable(cur)) cur = cur.parent;
+  return cur || null;
+}
+
+figma.ui.onmessage = function (msg) {
   if (!msg || msg.type !== 'PROPOSE') return;
+  runPropose(msg);
+};
+
+async function runPropose(msg) {
+  var platform = (msg.platform === 'rn') ? 'rn' : 'web';
+  var textPrompt = (typeof msg.textPrompt === 'string' && msg.textPrompt) || '';
 
   try {
-    var platform = (msg.platform === 'rn') ? 'rn' : 'web';
-    var textPrompt = (typeof msg.textPrompt === 'string' && msg.textPrompt) || '';
-
     var sel = figma.currentPage.selection || [];
-    var node = (sel && sel[0]) || null;
+    var original = sel[0] || null;
 
-    if (!node || node.type !== 'FRAME') {
-      figma.notify('Select exactly one Frame before running the plugin.');
-      figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, reason: 'no-frame' } });
+    if (!original) {
+      var err1 = 'No selection. Select a Frame/Component/Instance.';
+      console.warn('[A11y] ' + err1);
+      figma.notify(err1);
+      figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, reason: 'no-selection', message: err1 } });
+      return;
+    }
+
+    var target = nearestExportable(original);
+    if (!target) {
+      var err2 = 'Selected node cannot be exported. Choose a Frame/Component/Instance.';
+      console.warn('[A11y] ' + err2, { type: original.type });
+      figma.notify(err2);
+      figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, reason: 'not-exportable', message: err2, nodeType: original.type } });
       return;
     }
 
     var API = 'https://a11y-annotator-backend.onrender.com/annotate';
+    console.log('[A11y] preparing request', { platform: platform, nodeType: target.type });
 
     if (platform === 'web') {
       await callAnnotate(API, { platform: 'web', text: textPrompt });
     } else {
-      var bytes = await node.exportAsync({ format: 'PNG' });
+      var exportOpts = { format: 'PNG', constraint: { type: 'SCALE', value: 1 } };
+      var bytes = await target.exportAsync(exportOpts);
+      // Safety: cap size to avoid absurd payloads (e.g., very large frames).
+      if (bytes && bytes.length > 10 * 1024 * 1024) { // >10MB
+        var err3 = 'Export is too large (>10MB). Scale the frame down or export a smaller area.';
+        console.warn('[A11y] ' + err3, { bytes: bytes.length });
+        figma.notify(err3);
+        figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, reason: 'too-large', message: err3, bytes: bytes.length } });
+        return;
+      }
       var imageBase64 = figma.base64Encode(bytes);
+      console.log('[A11y] export done', { bytes: bytes ? bytes.length : 0, b64Len: imageBase64 ? imageBase64.length : 0 });
       await callAnnotate(API, { platform: 'rn', imageBase64: imageBase64 });
     }
   } catch (e) {
-    console.error('[A11y Annotator] error:', e);
-    figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, error: String(e) } });
+    console.error('[A11y] runPropose error:', e);
+    figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, error: String(e && e.message || e) } });
   }
-};
+}
 
-// --- API call helper ---
 async function callAnnotate(API, body) {
-  console.log('[A11y Annotator] POST', API, { bodyKeys: Object.keys(body || {}) });
+  console.log('[A11y] POST', API, { bodyKeys: Object.keys(body || {}) });
+  var res;
+  try {
+    res = await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    });
+  } catch (netErr) {
+    console.error('[A11y] fetch failed', netErr);
+    figma.notify('Network error. See console.');
+    figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, reason: 'network', error: String(netErr) } });
+    return;
+  }
 
-  var res = await fetch(API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {})
-  });
+  var text = '';
+  try { text = await res.text(); } catch (e) {}
+  var json;
+  try { json = text ? JSON.parse(text) : {}; } catch (e) { json = { raw: text }; }
 
   if (!res.ok) {
-    var t = '';
-    try { t = await res.text(); } catch (e) {}
-    throw new Error('API ' + res.status + ' ' + res.statusText + ': ' + t);
+    console.error('[A11y] API error', { status: res.status, text: text });
+    figma.notify('API ' + res.status + '. See console.');
+    figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, status: res.status, body: json } });
+    return;
   }
 
-  var data = {};
-  try { data = await res.json(); } catch (e) {}
-  console.log('[A11y Annotator] API ok', data);
-  figma.ui.postMessage({ type: 'RESULT', payload: data });
+  console.log('[A11y] API ok', json);
+  figma.ui.postMessage({ type: 'RESULT', payload: json || { ok: true } });
 }
