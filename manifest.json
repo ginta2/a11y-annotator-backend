@@ -12,6 +12,9 @@
     "allowedDomains": [
       "https://api.openai.com",
       "https://a11y-annotator-backend.onrender.com"
+    ],
+    "devAllowedDomains": [
+      "http://localhost:8787"
     ]
   }
 }
