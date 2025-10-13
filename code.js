@@ -49,11 +49,10 @@ async function runPropose(msg) {
       return;
     }
 
-    var API = 'https://a11y-annotator-backend.onrender.com/annotate';
     console.log('[A11y] preparing request', { platform: platform, nodeType: target.type });
 
     if (platform === 'web') {
-      await callAnnotate(API, { platform: 'web', text: textPrompt });
+      await callAnnotate({ platform: 'web', text: textPrompt });
     } else {
       var exportOpts = { format: 'PNG', constraint: { type: 'SCALE', value: 1 } };
       var bytes = await target.exportAsync(exportOpts);
@@ -67,7 +66,7 @@ async function runPropose(msg) {
       }
       var imageBase64 = figma.base64Encode(bytes);
       console.log('[A11y] export done', { bytes: bytes ? bytes.length : 0, b64Len: imageBase64 ? imageBase64.length : 0 });
-      await callAnnotate(API, { platform: 'rn', imageBase64: imageBase64 });
+      await callAnnotate({ platform: 'rn', imageBase64: imageBase64 });
     }
   } catch (e) {
     console.error('[A11y] runPropose error:', e);
@@ -75,34 +74,28 @@ async function runPropose(msg) {
   }
 }
 
-async function callAnnotate(API, payload) {
+async function callAnnotate(payload) {
   console.log('[A11y] POST', API, { bodyKeys: Object.keys(payload || {}) });
-  var res;
-  try {
-    res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload || {})
-    });
-  } catch (netErr) {
-    console.error('[A11y] fetch failed', netErr);
-    figma.notify('Network error. See console.');
-    figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, reason: 'network', error: String(netErr) } });
-    return;
-  }
+  
+  const res = await fetch(API, {
+    method: 'POST',
+    mode: 'cors',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
 
-  var text = '';
-  try { text = await res.text(); } catch (e) {}
-  var json;
-  try { json = text ? JSON.parse(text) : {}; } catch (e) { json = { raw: text }; }
+  // Helpful debug
+  // console.log('[annotate] status', res.status, 'ok?', res.ok);
 
   if (!res.ok) {
-    console.error('[A11y] API error', { status: res.status, text: text });
-    figma.notify('API ' + res.status + '. See console.');
-    figma.ui.postMessage({ type: 'RESULT', payload: { ok: false, status: res.status, body: json } });
-    return;
+    const text = await res.text().catch(() => '');
+    throw new Error(`annotate failed: ${res.status} ${text}`);
   }
-
+  
+  const json = await res.json();
   console.log('[A11y] API ok', json);
   figma.ui.postMessage({ type: 'RESULT', payload: json || { ok: true } });
 }
