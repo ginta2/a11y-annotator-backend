@@ -1,3 +1,7 @@
+// code.js
+// Hosted API (note https, no trailing slash)
+const API = 'https://a11y-annotator-backend.onrender.com/annotate';
+
 figma.showUI(__html__, { width: 420, height: 520 });
 console.log('[A11y] boot v2');
 
@@ -71,14 +75,14 @@ async function runPropose(msg) {
   }
 }
 
-async function callAnnotate(API, body) {
-  console.log('[A11y] POST', API, { bodyKeys: Object.keys(body || {}) });
+async function callAnnotate(API, payload) {
+  console.log('[A11y] POST', API, { bodyKeys: Object.keys(payload || {}) });
   var res;
   try {
     res = await fetch(API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body || {})
+      body: JSON.stringify(payload || {})
     });
   } catch (netErr) {
     console.error('[A11y] fetch failed', netErr);
