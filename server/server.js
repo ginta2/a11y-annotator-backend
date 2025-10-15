@@ -16,45 +16,51 @@ app.use((req, _res, next) => {
   next();
 });
 
-/**
- * Allow:
- *  - Figma desktop app (origin === 'null' or no origin)
- *  - figma.com (and subdomains)
- *  - our own frontends/tools during tests
- */
-const corsOrigin = (origin, cb) => {
-  if (!origin || origin === 'null') return cb(null, true); // Figma desktop app
-  try {
-    const u = new URL(origin);
-    const host = u.hostname;
-    if (host === 'www.figma.com' || host.endsWith('.figma.com')) return cb(null, true);
-    return cb(null, true); // we are not exposing credentials, so permissive CORS is fine
-  } catch {
-    return cb(null, false);
-  }
+const allowOrigin = (origin, cb) => {
+  // Figma Desktop & local files show Origin "null"
+  if (!origin || origin === 'null') return cb(null, true);
+  // Allow our production host
+  const allowed = [
+    'https://a11y-annotator-backend.onrender.com'
+    // add more if needed
+  ];
+  if (allowed.includes(origin)) return cb(null, true);
+  // also allow https in general if you want to be permissive:
+  if (/^https:\/\//.test(origin)) return cb(null, true);
+  return cb(null, false);
 };
 
-const corsMw = cors({
-  origin: corsOrigin,
-  methods: ['POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: false,
+app.use(cors({
+  origin: allowOrigin,
+  methods: ['GET','POST','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization','X-Requested-With'],
   maxAge: 86400,
-});
+}));
 
-// CORS + security headers for every request
+// Ensure preflights are handled for all routes
+app.options('*', cors({
+  origin: allowOrigin,
+  methods: ['GET','POST','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization','X-Requested-With'],
+  maxAge: 86400,
+}));
+
+// Also add a tiny middleware to always emit ACAO and Vary for safety
 app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin || origin === 'null') {
+    res.setHeader('Access-Control-Allow-Origin', 'null');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
+  // Security headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   next();
 });
-
-app.use(corsMw);
-
-// Respond to preflight explicitly (important on Render)
-app.options('/annotate', corsMw, (req, res) => res.sendStatus(204));
 
 // ---- HEALTH ----
 app.get('/health', (req, res) => {
