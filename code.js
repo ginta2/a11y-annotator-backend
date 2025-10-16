@@ -42,7 +42,7 @@ async function safePostJSON(url, data) {
   // Attempt json, fallback to text
   try {
     return await res.json();
-  } catch {
+  } catch (e) {
     return await res.text();
   }
 }
@@ -89,14 +89,14 @@ function nearestExportable(node) {
 
 figma.ui.onmessage = (msg) => {
   console.log('[A11y] ui message ->', msg);
-  if (msg?.type === 'runPropose') {
+  if (msg && msg.type === 'runPropose') {
     runPropose({
       frames: msg.frames,
       platform: msg.platform,
       prompt: msg.prompt || '',
     });
   } else {
-    console.warn('[A11y] unknown ui message type', msg?.type);
+    console.warn('[A11y] unknown ui message type', msg && msg.type);
   }
 };
 
@@ -104,34 +104,22 @@ async function runPropose({ frames, platform, prompt }) {
   const payload = { frames, platform, prompt };
   console.log('[A11y] payload ->', payload);
 
-  let res;
-  try {
-    res = await fetch(`${API}/annotate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch (e) {
-    console.error('[A11y] fetch() threw:', e);
-    figma.notify('Network error (fetch threw). See console.');
-    return;
-  }
-
-  console.log('[A11y] /annotate status:', res.status);
   let data;
   try {
-    data = await res.json();
+    // Use the Figma-safe helper
+    data = await annotate(payload);
+    // internally calls safePostJSON(`${API}/annotate`, payload)
   } catch (e) {
-    console.error('[A11y] res.json() failed:', e);
-    figma.notify('Bad JSON from server.');
+    console.error('[A11y] network error:', e);
+    figma.notify(`Network error: ${e.message}`);
     return;
   }
 
   console.log('[A11y] /annotate JSON:', data);
 
-  if (!res.ok || !data || data.ok === false) {
-    console.error('[A11y] server reported failure:', { status: res.status, data });
-    figma.notify(`Server error: ${res.status}`);
+  if (!data || data.ok === false) {
+    console.error('[A11y] server reported failure:', data);
+    figma.notify('Server error (see console).');
     return;
   }
 
