@@ -43,7 +43,16 @@
         setStatus('Sending…');
         var platform = getSelectedPlatform();
         var textPrompt = getTextPrompt();
-        parent.postMessage({ pluginMessage: { type: 'PROPOSE', platform: platform, textPrompt: textPrompt } }, '*');
+        var frames = []; // Empty array - code.js will collect from selection
+        console.log('[UI] Sent runPropose', {frames, platform, prompt: textPrompt});
+        parent.postMessage({ 
+          pluginMessage: { 
+            type: 'runPropose', 
+            frames: frames,
+            platform: platform, 
+            prompt: textPrompt 
+          } 
+        }, '*');
       };
 
       window.onmessage = function (e) {

@@ -115,9 +115,10 @@ function normalizeType(t) {
 }
 
 figma.ui.onmessage = async (msg) => {
-  const t = normalizeType(msg?.type);
   console.log('[A11y] ui message ->', msg);
-  if (t === 'runpropose' || t === 'propose') {
+  const t = msg?.type;
+  if (t === 'runPropose' || t === 'PROPOSE') {
+    figma.notify('Sending to /annotate…');
     const prompt = (msg?.prompt ?? msg?.textPrompt ?? '').toString();
     let frames = Array.isArray(msg?.frames) ? msg.frames : null;
     if (!frames || frames.length === 0) {
@@ -133,7 +134,7 @@ figma.ui.onmessage = async (msg) => {
       prompt,
     });
   } else {
-    console.warn('[A11y] unknown ui message type', msg && msg.type);
+    console.warn('[A11y] unknown ui message type', t);
   }
 };
 
@@ -143,12 +144,12 @@ async function runPropose({ frames, platform, prompt }) {
   let data;
   try {
     data = await safePostJSON(`${API}/annotate`, payload);
+    console.log('[A11y] /annotate response:', data);
   } catch (e) {
     console.error('[A11y] /annotate failed:', e);
     figma.notify(`Request failed: ${e?.message || e}`);
     return;
   }
-  console.log('[A11y] /annotate response:', data);
 
   if (!data || data.ok === false) {
     figma.notify('Server reported failure. See console.');
