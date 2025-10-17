@@ -2,6 +2,8 @@ import express from 'express';
 import crypto from 'crypto';
 import fetch from 'node-fetch';
 
+// Trigger deployment for UX improvements
+
 // Inline focusable extractor to avoid module resolution issues
 function isLikelyButton(node) {
   const n = (node.name || '').toLowerCase();
