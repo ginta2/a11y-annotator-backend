@@ -6,32 +6,43 @@ import dotenv from 'dotenv';
 dotenv.config();
 const app = express();
 
-// CORS middleware for Figma plugins - MUST be first!
-const ALLOWED_ORIGINS = new Set([
-  'https://www.figma.com', // Figma web editor
-  'null' // Figma desktop (origin is "null")
-]);
+// --- Robust CORS for Figma Desktop & web ---
+// Figma Desktop often sends Origin: null. Allow it (or use '*').
+const ALLOW_ORIGINS = ['*', 'null', 'https://www.figma.com'];
 
 app.use((req, res, next) => {
   const origin = req.headers.origin || 'null';
-  
-  if (ALLOWED_ORIGINS.has(origin)) {
+
+  // allow "*" or the incoming origin
+  if (ALLOW_ORIGINS.includes('*')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  } else if (ALLOW_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', 'https://www.figma.com');
   }
-  // res.setHeader('Access-Control-Allow-Origin', '*'); // Keeping it tight is usually better.
-  
+
+  // methods & headers the client will use
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Requested-With'
+  );
+
+  // optional (helps avoid extra preflights)
+  res.setHeader('Access-Control-Max-Age', '86400');
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS'); // We only ever send JSON with POST
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  // res.setHeader('Access-Control-Allow-Credentials', 'true'); // leave off
-  
-  // Short-circuit preflight
+
+  // IMPORTANT: fast-exit preflight with 204 and no body
   if (req.method === 'OPTIONS') {
-    return res.status(204).end(); // 204: No Content - quickest successful preflight
+    // (Optional) log for diagnostics
+    console.log('[SRV] CORS preflight ok', {
+      path: req.path,
+      origin: req.headers.origin,
+      reqHeaders: req.headers['access-control-request-headers'],
+      reqMethod: req.headers['access-control-request-method'],
+    });
+    return res.status(204).end();
   }
-  
+
   next();
 });
 
