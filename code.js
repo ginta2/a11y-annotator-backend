@@ -98,7 +98,7 @@ figma.ui.onmessage = async (msg) => {
   const platform = msg?.platform || 'web';
   const prompt   = msg?.prompt   || '';
 
-  // 1) Collect and validate selection
+  // 1) Validate selection
   const sel = figma.currentPage.selection;
   if (!sel.length || sel[0].type !== 'FRAME') {
     figma.notify('Select a frame first');
@@ -106,11 +106,10 @@ figma.ui.onmessage = async (msg) => {
   }
   const frame = sel[0];
 
-  // 2) Export the frame to bytes
-  let bytes, png, width, height;
+  // 2) Export the frame
+  let bytes, width, height;
   try {
-    bytes = await frame.exportAsync({ format: 'PNG' });
-    png = new Uint8Array(bytes);
+    bytes  = await frame.exportAsync({ format: 'PNG' });
     width  = frame.width;
     height = frame.height;
   } catch (e) {
@@ -119,25 +118,24 @@ figma.ui.onmessage = async (msg) => {
     return;
   }
 
-  // 3) Build payload and send
+  // 3) Build payload and POST
   const payload = {
     platform,
     prompt,
     frames: [{
-      bytes: Array.from(png),  // server can accept base64 if you prefer
-      width,
-      height,
+      bytes: Array.from(new Uint8Array(bytes)),
+      width, height,
+      id: frame.id,
       name: frame.name,
-      id: frame.id
     }]
   };
 
   try {
     console.log('[A11y] POST /annotate payload keys ->', Object.keys(payload));
-    const res = await fetch(`${API}/annotate`, {
+    const res  = await fetch(`${API}/annotate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
 
@@ -148,7 +146,6 @@ figma.ui.onmessage = async (msg) => {
     }
 
     console.log('[A11y] /annotate JSON:', data);
-    // apply annotations …
     figma.ui.postMessage({ type: 'RESULT', payload: data });
   } catch (e) {
     console.error('[A11y] fetch threw', e);
