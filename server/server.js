@@ -61,9 +61,6 @@ function extractAndOrder(root, cap) {
   return out;
 }
 
-const app = express();
-app.use(express.json({ limit: '2mb' })); // fix PayloadTooLargeError
-
 const cache = new Map();
 
 function normalizeTree(n) {
@@ -97,18 +94,7 @@ function pruneTree(n, budget = 1500) {
   return n;
 }
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
-app.options('/annotate', (req, res) => {
-  res.set(CORS).status(204).end();
-});
-
-app.post('/annotate', express.json({ limit: '4mb' }), async (req, res) => {
-  res.set(CORS);
+app.post('/annotate', async (req, res) => {
 
   try {
     const { frames = [], platform, prompt = '' } = req.body || {};
