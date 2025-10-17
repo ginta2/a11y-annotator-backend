@@ -43,10 +43,10 @@
         setStatus('Sending…');
         var platform = getSelectedPlatform();
         var textPrompt = getTextPrompt();
-        console.log('[UI] Sent runPropose', {platform, prompt: textPrompt});
+        console.log('[UI] Sent PROPOSE_FOCUS_ORDER', {platform, prompt: textPrompt});
         parent.postMessage({ 
           pluginMessage: { 
-            type: 'runPropose', 
+            type: 'PROPOSE_FOCUS_ORDER', 
             platform: platform, 
             prompt: textPrompt 
           } 
@@ -69,6 +69,12 @@
           if (statusEl) statusEl.textContent = ok
             ? `Annotation applied ${summary}`
             : `Server returned not-ok.`;
+        }
+
+        if (msg.type === 'ANNOTATION_APPLIED') {
+          const { items = [], checksum } = msg.data || {};
+          const itemCount = Array.isArray(items) ? items.length : 0;
+          if (statusEl) statusEl.textContent = `Focus order applied: ${itemCount} items (checksum: ${checksum?.substring(0, 8) || 'unknown'})`;
         }
 
         if (msg.type === 'ERROR') {
