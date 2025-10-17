@@ -1,62 +1,46 @@
-import express from "express";
+import express from 'express';
 
 const app = express();
+app.use(express.json());
 
-// --- CORS Middleware ---
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const allowedOrigins = ["https://www.figma.com", "https://figma.com", "null"];
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
 
-  let allowOrigin = "*"; // default fallback
-  if (origin && allowedOrigins.includes(origin)) {
-    allowOrigin = origin;
-  }
-
-  res.setHeader("Access-Control-Allow-Origin", allowOrigin);
-  res.setHeader("Vary", "Origin");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Max-Age", "86400");
-
-  console.log(`[SRV] ${req.method} ${req.path} | Origin: ${origin || "(none)"}`);
-
-  if (req.method === "OPTIONS") {
-    console.log("[SRV] Preflight OK");
-    return res.status(204).end();
-  }
-
-  next();
+app.options('/annotate', (req, res) => {
+  res.set(CORS).status(204).end();
 });
 
-// --- Body Parser ---
-app.use(express.json({ limit: "2mb" }));
+app.post('/annotate', async (req, res) => {
+  res.set(CORS);
 
-// --- Health Endpoint ---
-app.get("/health", (req, res) => {
-  res.json({ ok: true, status: "healthy" });
-});
-
-// --- Main Annotate Route ---
-app.post("/annotate", async (req, res) => {
   try {
-    console.log("[SRV] Received annotate request", {
-      platform: req.body.platform,
-      frames: req.body.frames?.length,
-    });
+    const { frames, platform, prompt } = req.body || {};
+    if (!Array.isArray(frames) || frames.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No frames provided' });
+    }
 
-    // Example success reply
-    res.json({
-      ok: true,
-      message: "Annotation received successfully",
-    });
-  } catch (err) {
-    console.error("[SRV] annotate error:", err);
-    res.status(500).json({ ok: false, error: "Internal server error" });
+    // TODO: plug in your AI here. For now, return a mock.
+    const annotations = frames.map((f, i) => ({
+      frameId: f.id ?? `frame-${i}`,
+      order: ['header', 'main', 'primary-cta'],
+      notes: [
+        `Platform: ${platform || 'unknown'}`,
+        prompt ? `Prompt: ${prompt}` : 'No extra prompt'
+      ],
+    }));
+
+    return res.json({ ok: true, annotations });
+  } catch (e) {
+    console.error('[SRV] /annotate error', e);
+    return res.status(500).json({ ok: false, error: 'Server error' });
   }
 });
 
-// --- Start Server ---
+// Health (keep)
+app.get('/health', (req, res) => res.set(CORS).json({ ok: true }));
+
 const port = process.env.PORT || 10000;
-app.listen(port, () => {
-  console.log(`[SRV] Listening on http://localhost:${port}`);
-});
+app.listen(port, () => console.log(`[SRV] Listening on :${port}`));
