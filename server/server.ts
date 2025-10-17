@@ -55,14 +55,14 @@ app.post('/annotate', async (req, res) => {
   const cacheKey = `${platform}:${checksum}`;
   if (cache.has(cacheKey)) {
     const cached = cache.get(cacheKey);
-    return res.json({ ok: true, cache: true, checksum, ...cached });
+    return res.json(Object.assign({}, { ok: true, cache: true, checksum }, cached));
   }
 
   const focusables = countFocusables(frame.tree);
   if (focusables === 0) {
-    const data = { frameName: frame.name, items: [], message: 'No focusable elements in this selection.' };
-    cache.set(cacheKey, data);
-    return res.json({ ok: true, checksum, ...data });
+  const data = { frameName: frame.name, items: [], message: 'No focusable elements in this selection.' };
+  cache.set(cacheKey, data);
+  return res.json(Object.assign({}, { ok: true, checksum }, data));
   }
 
   // Trivial fast-path: <=2 items → deterministic order w/o model
@@ -77,9 +77,9 @@ app.post('/annotate', async (req, res) => {
         }
     };
     walk(frame.tree);
-    const data = { frameName: frame.name, items };
-    cache.set(cacheKey, data);
-    return res.json({ ok: true, checksum, ...data });
+  const data = { frameName: frame.name, items };
+  cache.set(cacheKey, data);
+  return res.json(Object.assign({}, { ok: true, checksum }, data));
   }
 
   const treeForModel = pruneTree(frame.tree);
@@ -120,7 +120,7 @@ ${JSON.stringify(treeForModel, null, 2)}`;
   const ms = Date.now() - t0;
   console.log(JSON.stringify({ event: 'annotate', frame: frame.name, nodeCount: 'n/a', focusables, checksum, ms }));
 
-  res.json({ ok: true, checksum, ...data });
+  res.json(Object.assign({}, { ok: true, checksum }, data));
 });
 
 app.listen(process.env.PORT || 10000, () => {

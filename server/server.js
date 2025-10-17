@@ -72,14 +72,14 @@ app.post('/annotate', async (req, res) => {
     const cacheKey = `${platform}:${checksum}`;
     if (cache.has(cacheKey)) {
       const cached = cache.get(cacheKey);
-      return res.json({ ok: true, cache: true, checksum, ...cached });
+      return res.json(Object.assign({}, { ok: true, cache: true, checksum }, cached));
     }
 
     const focusables = countFocusables(targetFrame.tree);
     if (focusables === 0) {
       const data = { frameName: targetFrame.name, items: [], message: 'No focusable elements in this selection.' };
       cache.set(cacheKey, data);
-      return res.json({ ok: true, checksum, ...data });
+      return res.json(Object.assign({}, { ok: true, checksum }, data));
     }
 
     // Trivial fast-path: <=2 items → deterministic order w/o model
@@ -96,7 +96,7 @@ app.post('/annotate', async (req, res) => {
       walk(targetFrame.tree);
       const data = { frameName: targetFrame.name, items };
       cache.set(cacheKey, data);
-      return res.json({ ok: true, checksum, ...data });
+      return res.json(Object.assign({}, { ok: true, checksum }, data));
     }
 
     const treeForModel = pruneTree(targetFrame.tree);
@@ -151,7 +151,7 @@ ${JSON.stringify(treeForModel, null, 2)}`;
       ms
     }));
 
-    return res.json({ ok: true, checksum, ...data });
+    return res.json(Object.assign({}, { ok: true, checksum }, data));
   } catch (e) {
     console.error('[SRV] /annotate error', e);
     return res.status(500).json({ ok: false, error: 'Server error' });
