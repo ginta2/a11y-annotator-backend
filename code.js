@@ -130,7 +130,7 @@ async function annotate(payload) {
 }
 
 figma.showUI(__html__, { width: 420, height: 520 });
-console.log('[A11y] boot v2');
+console.log('[A11y] plugin booted');
 
 // Call warm-up on plugin start
 warmUp();

@@ -60,7 +60,7 @@ function isFocusableHeuristic(node: SceneNode, platform: 'web'|'rn') {
       focusable = true;
       return { focusable, role: forcedRole || nameRole || (platform === 'web' ? 'button' : 'button') };
     }
-  } catch {}
+  } catch (e) { /* no-op */ }
 
   return { focusable, role: nameRole };
 }

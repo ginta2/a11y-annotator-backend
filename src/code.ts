@@ -36,6 +36,10 @@ declare global {
       selection: SceneNode[];
     };
     notify: (message: string) => void;
+    showUI: (html: string, options: { width: number; height: number }) => void;
+    root: {
+      getPluginData: (key: string) => string;
+    };
     ui: {
       onmessage: (handler: (msg: any) => void) => void;
       postMessage: (message: any) => void;
@@ -43,9 +47,14 @@ declare global {
   }
 
   const figma: FigmaAPI;
+  const __html__: string;
 }
 
 import { toDTO } from './lib/serialize';
+import { BACKEND_URL } from './lib/config';
+
+figma.showUI(__html__, { width: 420, height: 520 });
+console.log('[A11y] plugin booted');
 
 figma.ui.onmessage = async (msg: any) => {
   if (msg.type === 'PROPOSE_FOCUS_ORDER') {
@@ -71,7 +80,7 @@ figma.ui.onmessage = async (msg: any) => {
       }]
     };
 
-    const res = await fetch(`${'https://a11y-annotator-backend.onrender.com'}/annotate`, {
+    const res = await fetch(`${BACKEND_URL}/annotate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
