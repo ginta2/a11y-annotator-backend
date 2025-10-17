@@ -162,7 +162,5 @@ const port = process.env.PORT || 10000;
 // Export app for testing
 export { app };
 
-// Only start server if not in test environment
-if (process.env.NODE_ENV !== 'test') {
-  app.listen(port, () => console.log(`[SRV] Listening on :${port}`));
-}
+// Start server
+app.listen(port, () => console.log(`[SRV] Listening on :${port}`));
