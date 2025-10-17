@@ -254,19 +254,19 @@ export class FocusOrderHeuristics {
     manualItems?: FocusOrderItem[]
   ): FocusOrderItem[] {
     // Start with manual edits (highest priority)
-    const result = manualItems ? [...manualItems] : [];
+    const result = manualItems ? (manualItems || []).slice() : [];
     
     // Add AI results for items not manually edited
     const manualNodeIds = new Set(manualItems && manualItems.length ? manualItems.map(item => item.nodeId) : []);
     const aiItemsNotManual = aiItems.filter(item => !manualNodeIds.has(item.nodeId));
-    result.push(...aiItemsNotManual);
+    result.push.apply(result, aiItemsNotManual);
     
     // Add heuristic results for items not in AI or manual
     const existingNodeIds = new Set(result.map(item => item.nodeId));
     const heuristicItemsNotExisting = heuristicItems.filter(
       item => !existingNodeIds.has(item.nodeId)
     );
-    result.push(...heuristicItemsNotExisting);
+    result.push.apply(result, heuristicItemsNotExisting);
     
     // Re-sort by order
     result.sort((a, b) => a.order - b.order);

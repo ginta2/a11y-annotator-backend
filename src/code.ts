@@ -69,7 +69,7 @@ figma.ui.onmessage = async (msg: any) => {
     const frameTree = toDTO(selection as FrameNode, platform);
 
     // lightweight count to decide trivial cases
-    const focusableCount = JSON.stringify(frameTree).match(/"focusable":true/g)?.length ?? 0;
+    const focusableCount = JSON.stringify(frameTree).match(/"focusable":true/g) ? JSON.stringify(frameTree).match(/"focusable":true/g).length : 0;
 
     const payload = {
       platform,

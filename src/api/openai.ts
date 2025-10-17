@@ -146,8 +146,7 @@ IMPORTANT:
       const parsed = JSON.parse(cleanedContent);
       
       // Validate and enrich the response
-      const items = parsed.items.map((item: any) => ({
-        ...item,
+      const items = parsed.items.map((item: any) => Object.assign({}, item, {
         id: `ai-${item.nodeId}`,
         bounds: this.findNodeBounds(item.nodeId, nodeTree),
         source: 'ai' as const

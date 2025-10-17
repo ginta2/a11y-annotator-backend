@@ -68,7 +68,7 @@ function isFocusableHeuristic(node: SceneNode, platform: 'web'|'rn') {
 export function toDTO(n: SceneNode, platform: 'web'|'rn'): NodeDTO {
   const { focusable, role } = isFocusableHeuristic(n, platform);
   const rect = ('absoluteTransform' in n && 'width' in n && 'height' in n)
-    ? { x: (n as any).x ?? 0, y: (n as any).y ?? 0, w: (n as any).width ?? 0, h: (n as any).height ?? 0 }
+    ? { x: ((n as any).x !== null && (n as any).x !== undefined ? (n as any).x : 0), y: ((n as any).y !== null && (n as any).y !== undefined ? (n as any).y : 0), w: ((n as any).width !== null && (n as any).width !== undefined ? (n as any).width : 0), h: ((n as any).height !== null && (n as any).height !== undefined ? (n as any).height : 0) }
     : undefined;
 
   const kids = ('children' in n) ? (n.children as SceneNode[])
@@ -76,13 +76,11 @@ export function toDTO(n: SceneNode, platform: 'web'|'rn'): NodeDTO {
     .sort(readingOrder)
     .map(c => toDTO(c, platform)) : [];
 
-  return {
+  return Object.assign({}, {
     name: n.name,
     type: n.type,
     visible: n.visible !== false,
     role,
-    focusable,
-    ...(rect || {}),
-    ...(kids.length ? { children: kids } : {})
-  };
+    focusable
+  }, rect || {}, kids.length ? { children: kids } : {});
 }

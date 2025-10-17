@@ -72,9 +72,10 @@
         }
 
         if (msg.type === 'ANNOTATION_APPLIED') {
-          const { items = [], checksum } = msg.data || {};
-          const itemCount = Array.isArray(items) ? items.length : 0;
-          if (statusEl) statusEl.textContent = `Focus order applied: ${itemCount} items (checksum: ${checksum?.substring(0, 8) || 'unknown'})`;
+          const { annotations = [], checksum } = msg.data || {};
+          const annotation = annotations && annotations[0] ? annotations[0] : null;
+          const itemCount = annotation && annotation.order ? annotation.order.length : 0;
+          if (statusEl) statusEl.textContent = `Focus order applied: ${itemCount} items (checksum: ${(checksum && checksum.substring) ? checksum.substring(0, 8) : 'unknown'})`;
         }
 
         if (msg.type === 'ERROR') {

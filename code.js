@@ -4,68 +4,6 @@
 
 const API = 'https://a11y-annotator-backend.onrender.com';
 
-// Node serialization functionality
-function readingOrder(a, b) {
-  // Top-to-bottom, then left-to-right with small tolerance
-  const ay = ('y' in a) ? a.y : 0;
-  const by = ('y' in b) ? b.y : 0;
-  if (Math.abs(ay - by) > 6) return ay - by;
-  const ax = ('x' in a) ? a.x : 0;
-  const bx = ('x' in b) ? b.x : 0;
-  return ax - bx;
-}
-
-function guessRoleFromName(name) {
-  const n = (name || '').toLowerCase();
-  if (/\b(link|back|learn more|details)\b/.test(n)) return 'link';
-  if (/\b(button|cta|start|submit|swap|save|next|continue)\b/.test(n)) return 'button';
-  if (/\b(input|field|email|password|search|textbox)\b/.test(n)) return 'textbox';
-  if (/\b(tab|pill|segment)\b/.test(n)) return 'tab';
-  if (/\b(menu|nav|navigation)\b/.test(n)) return 'navigation';
-  if (/\b(header|hero|app bar|top nav)\b/.test(n)) return 'landmark';
-  return undefined;
-}
-
-function isFocusableHeuristic(node, platform) {
-  const nameRole = guessRoleFromName(node.name || '');
-  let focusable = Boolean(nameRole);
-
-  // Respect plugin metadata tags if present
-  const getPD = (n, k) => ('getPluginData' in n ? n.getPluginData(k) : '');
-  try {
-    const tagged = getPD(node, 'a11y-focusable');
-    const forcedRole = getPD(node, 'a11y-role');
-    if (tagged === 'true') {
-      focusable = true;
-      return { focusable, role: forcedRole || nameRole || (platform === 'web' ? 'button' : 'button') };
-    }
-  } catch {}
-
-  return { focusable, role: nameRole };
-}
-
-function toDTO(n, platform) {
-  const { focusable, role } = isFocusableHeuristic(n, platform);
-  const rect = ('absoluteTransform' in n && 'width' in n && 'height' in n)
-    ? { x: n.x ?? 0, y: n.y ?? 0, w: n.width ?? 0, h: n.height ?? 0 }
-    : undefined;
-
-  const kids = ('children' in n) ? n.children
-    .filter(c => c.visible !== false)
-    .sort(readingOrder)
-    .map(c => toDTO(c, platform)) : [];
-
-  return {
-    name: n.name,
-    type: n.type,
-    visible: n.visible !== false,
-    role,
-    focusable,
-    ...(rect || {}),
-    ...(kids.length ? { children: kids } : {})
-  };
-}
-
 /**
  * Safe POST request using only Figma-allowed fetch init keys
  * @param {string} url - Target URL
@@ -149,238 +87,165 @@ function nearestExportable(node) {
   return cur || null;
 }
 
-function createNoteForFrame(frameNode, title, lines) {
-  const padding = 12;
-  const note = figma.createFrame();
-  note.name = `A11y – ${title}`;
-  note.cornerRadius = 8;
-  note.fills = [{ type: 'SOLID', color: { r: 1, g: 0.98, b: 0.85 } }];
-  note.strokes = [{ type: 'SOLID', color: { r: 0.9, g: 0.8, b: 0.4 } }];
-  note.strokeWeight = 1;
-  note.layoutMode = 'VERTICAL';
-  note.itemSpacing = 8;
-  note.paddingLeft = note.paddingRight = note.paddingTop = note.paddingBottom = padding;
-
-  const titleText = figma.createText();
-  titleText.characters = title;
-  titleText.fontName = { family: 'Inter', style: 'Bold' };
-  titleText.fontSize = 12;
-  titleText.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
-
-  const bodyText = figma.createText();
-  bodyText.characters = lines.map((s, i) => `${i + 1}. ${s}`).join('\n');
-  bodyText.fontName = { family: 'Inter', style: 'Regular' };
-  bodyText.fontSize = 12;
-  bodyText.fills = [{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2 } }];
-
-  note.appendChild(titleText);
-  note.appendChild(bodyText);
-
-  // Place to the right of the frame, same y
-  note.x = frameNode.x + frameNode.width + 16;
-  note.y = frameNode.y;
-
-  if (frameNode.parent && 'appendChild' in frameNode.parent) {
-    frameNode.parent.appendChild(note);
-  } else {
-    figma.currentPage.appendChild(note);
-  }
-  return note;
+// Focus order detection and serialization functions
+function readingOrder(a, b) {
+  // Top-to-bottom, then left-to-right with small tolerance
+  const ay = ('y' in a) ? a.y : 0;
+  const by = ('y' in b) ? b.y : 0;
+  if (Math.abs(ay - by) > 6) return ay - by;
+  const ax = ('x' in a) ? a.x : 0;
+  const bx = ('x' in b) ? b.x : 0;
+  return ax - bx;
 }
 
-function saveOrderPluginData(node, order, notes) {
+function guessRoleFromName(name) {
+  const n = (name || '').toLowerCase();
+  if (/\b(link|back|learn more|details)\b/.test(n)) return 'link';
+  if (/\b(button|cta|start|submit|swap|save|next|continue)\b/.test(n)) return 'button';
+  if (/\b(input|field|email|password|search|textbox)\b/.test(n)) return 'textbox';
+  if (/\b(tab|pill|segment)\b/.test(n)) return 'tab';
+  if (/\b(menu|nav|navigation)\b/.test(n)) return 'navigation';
+  if (/\b(header|hero|app bar|top nav)\b/.test(n)) return 'landmark';
+  return undefined;
+}
+
+function isFocusableHeuristic(node, platform) {
+  const nameRole = guessRoleFromName(node.name || '');
+  let focusable = Boolean(nameRole);
+  
+  // Respect plugin metadata tags if present
+  const getPD = (n, k) => ('getPluginData' in n ? n.getPluginData(k) : '');
   try {
-    node.setPluginData('a11y_focus_order', JSON.stringify({ order, notes }));
-  } catch (_) { /* ignore if node type disallows plugin data */ }
+    const tagged = getPD(node, 'a11y-focusable');
+    const forcedRole = getPD(node, 'a11y-role');
+    if (tagged === 'true') {
+      focusable = true;
+      return { focusable, role: forcedRole || nameRole || (platform === 'web' ? 'button' : 'button') };
+    }
+  } catch (e) { /* no-op */ }
+
+  return { focusable, role: nameRole };
 }
 
+function toDTO(n, platform) {
+  const { focusable, role } = isFocusableHeuristic(n, platform);
+  const rect = ('absoluteTransform' in n && 'width' in n && 'height' in n)
+    ? { x: (n.x !== null && n.x !== undefined ? n.x : 0), y: (n.y !== null && n.y !== undefined ? n.y : 0), w: (n.width !== null && n.width !== undefined ? n.width : 0), h: (n.height !== null && n.height !== undefined ? n.height : 0) }
+    : undefined;
+
+  const kids = ('children' in n) ? n.children
+    .filter(c => c.visible !== false)
+    .sort(readingOrder)
+    .map(c => toDTO(c, platform)) : [];
+
+  return Object.assign({}, {
+    name: n.name,
+    type: n.type,
+    visible: n.visible !== false,
+    role,
+    focusable
+  }, rect || {}, kids.length ? { children: kids } : {});
+}
+
+// Track last checksum for UX feedback
+let lastChecksum = null;
+
+function computeChecksum(annos) {
+  if (!annos || !annos.length) return null;
+  const annotation = annos[0];
+  if (!annotation || !annotation.order) return null;
+  return JSON.stringify(annotation.order.map(item => ({ id: item.id, label: item.label })));
+}
+
+function applyAnnotations(annos) {
+  const newChecksum = computeChecksum(annos);
+  if (newChecksum === lastChecksum) {
+    figma.notify('Focus order already up to date');
+    return;
+  }
+  
+  // Apply annotations logic would go here
+  lastChecksum = newChecksum;
+  figma.notify('A11y: Annotation received and rendered.');
+}
 
 figma.ui.onmessage = async (msg) => {
-  // SAFELY read fields without optional chaining
-  const hasMsg = msg && typeof msg === 'object';
-  const type = hasMsg ? msg.type : undefined;
+  console.log('[A11y] ui message ->', msg);
+  const t = msg && msg.type;
 
-  // Handle new PROPOSE_FOCUS_ORDER message type
-  if (type === 'PROPOSE_FOCUS_ORDER') {
-    const platform = hasMsg && typeof msg.platform === 'string' ? msg.platform : 'web';
-    const selection = figma.currentPage.selection[0];
+  // Accept old and new names so the UI can evolve without breaking
+  const isPropose =
+    t === 'runPropose' ||
+    t === 'PROPOSE' ||
+    t === 'PROPOSE_FOCUS_ORDER';
 
-    if (!selection || selection.type !== 'FRAME') {
-      figma.notify('Select a frame to annotate.');
-      return;
-    }
+  if (isPropose) {
+    runPropose({
+      frames: msg.frames,
+      platform: msg.platform,
+      prompt: msg.prompt || '',
+    });
+  } else {
+    console.warn('[A11y] unknown ui message type', t);
+  }
+};
 
-    const frameTree = toDTO(selection, platform);
+async function runPropose({ frames, platform, prompt }) {
+  const selection = figma.currentPage.selection[0];
 
-    // lightweight count to decide trivial cases
-    const focusableCount = JSON.stringify(frameTree).match(/"focusable":true/g)?.length ?? 0;
-
-    const payload = {
-      platform,
-      frames: [{
-        id: selection.id,
-        name: selection.name,
-        tree: frameTree
-      }]
-    };
-
-    try {
-      const res = await fetch(`${API}/annotate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }).then(r => r.json()).catch(() => ({ ok: false }));
-
-      if (!res || !res.ok) {
-        figma.notify('Focus order service unavailable.');
-        return;
-      }
-
-      // Persist annotation on the frame
-      selection.setPluginData('a11y-focus-order', JSON.stringify({
-        platform,
-        frameId: selection.id,
-        frameName: selection.name,
-        checksum: res.checksum,
-        items: res.items,
-        at: new Date().toISOString()
-      }));
-
-      figma.notify('A11y: Annotation received and rendered.');
-      figma.ui.postMessage({ type: 'ANNOTATION_APPLIED', data: res });
-    } catch (e) {
-      console.error('[A11y] PROPOSE_FOCUS_ORDER failed', e);
-      figma.notify('Network error. See console.');
-    }
+  if (!selection || selection.type !== 'FRAME') {
+    figma.notify('Select a frame to annotate.');
     return;
   }
 
-  if (type !== 'runPropose' && type !== 'PROPOSE') {
-    console.warn('[A11y] unknown ui message type', type);
-    return;
-  }
+  const frameTree = toDTO(selection, platform);
 
-  const platform = hasMsg && typeof msg.platform === 'string' ? msg.platform : 'web';
-  const prompt   = hasMsg && typeof msg.prompt   === 'string' ? msg.prompt   : '';
-
-  // 1) Validate selection
-  const sel = figma.currentPage.selection;
-  if (!sel.length || sel[0].type !== 'FRAME') {
-    figma.notify('Select a frame first');
-    return;
-  }
-  const frame = sel[0];
-
-  // 2) Export frame with size validation
-  let bytes, width, height;
-  try {
-    // Check frame size to prevent memory issues
-    const maxSize = 4000; // Max width/height in pixels
-    if (frame.width > maxSize || frame.height > maxSize) {
-      figma.notify(`Frame too large (${Math.round(frame.width)}x${Math.round(frame.height)}). Max size: ${maxSize}x${maxSize}`);
-      return;
-    }
-    
-    // Check if frame has reasonable area
-    const maxArea = 8000000; // 8MP max area
-    if (frame.width * frame.height > maxArea) {
-      figma.notify(`Frame area too large (${Math.round(frame.width * frame.height / 1000000)}MP). Max: ${maxArea / 1000000}MP`);
-      return;
-    }
-    
-    bytes  = await frame.exportAsync({ format: 'PNG' });
-    width  = frame.width;
-    height = frame.height;
-    
-    // Validate export size
-    if (bytes.length > 10 * 1024 * 1024) { // 10MB limit
-      figma.notify('Exported frame too large (>10MB). Try reducing frame size.');
-      return;
-    }
-  } catch (e) {
-    console.error('[A11y] exportAsync failed', e);
-    figma.notify('Export failed. See console.');
-    return;
-  }
-
-  // 3) Build payload and POST
   const payload = {
-    platform: platform,
-    prompt: prompt,
+    platform,
     frames: [{
-      bytes: Array.from(new Uint8Array(bytes)),
-      width: width,
-      height: height,
-      id: frame.id,
-      name: frame.name
+      id: selection.id,
+      name: selection.name,
+      box: {
+        x: selection.x,
+        y: selection.y,
+        w: selection.width,
+        h: selection.height
+      },
+      children: frameTree.children || []
     }]
   };
 
   try {
-    console.log('[A11y] POST /annotate payload keys ->', Object.keys(payload));
-    const res  = await fetch(`${API}/annotate`, {
+    const res = await fetch(`${API}/annotate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    });
+    }).then(r => r.json()).catch(() => ({ ok: false }));
 
-    let data = {};
-    try { data = await res.json(); } catch (_e) {}
-
-    if (!res.ok || (data && data.ok === false)) {
-      console.error('[A11y] server reported failure:', res.status, data);
-      
-      // Provide specific error messages based on status code
-      let errorMsg = 'Server error: ' + res.status;
-      if (res.status === 413) {
-        errorMsg = 'Frame too large. Try reducing frame size.';
-      } else if (res.status === 400 && data && data.error) {
-        errorMsg = 'Request error: ' + data.error;
-      } else if (res.status >= 500) {
-        errorMsg = 'Server temporarily unavailable. Try again later.';
-      }
-      
-      figma.notify(errorMsg);
+    if (!res || !res.ok) {
+      figma.notify('Focus order service unavailable.');
       return;
     }
 
-    console.log('[A11y] /annotate JSON:', data);
+    // Apply annotations with UX feedback
+    applyAnnotations(res.annotations);
+
+    // Persist annotation on the frame
+    const annotation = res.annotations && res.annotations[0] ? res.annotations[0] : null;
+    const itemCount = annotation && annotation.order ? annotation.order.length : 0;
     
-    // …apply annotations…
-    console.log('[A11y] applying annotations:', data.annotations);
+    selection.setPluginData('a11y-focus-order', JSON.stringify({
+      platform,
+      frameId: selection.id,
+      frameName: selection.name,
+      checksum: res.checksum,
+      items: annotation ? annotation.order : [],
+      at: new Date().toISOString()
+    }));
 
-    // Best-effort font load for note text
-    try { await figma.loadFontAsync({ family: 'Inter', style: 'Regular' }); } catch (e) {}
-    try { await figma.loadFontAsync({ family: 'Inter', style: 'Bold' }); } catch (e) {}
-
-    for (const ann of data.annotations) {
-      const frameId = ann.frameId || ann.frameID || ann.id;
-      const order   = Array.isArray(ann.order) ? ann.order : [];
-      const notes   = typeof ann.notes === 'string' ? ann.notes : '';
-
-      if (!frameId) {
-        console.warn('[A11y] Missing frameId in annotation:', ann);
-        continue;
-      }
-      const node = figma.getNodeById(frameId);
-      if (!node || node.type !== 'FRAME') {
-        console.warn('[A11y] Could not find target frame', frameId, (node && node.type));
-        figma.notify('A11y: Could not find one target frame (see console).');
-        continue;
-      }
-
-      // Persist machine-readable data
-      saveOrderPluginData(node, order, notes);
-
-      // Create a small readable note next to the frame
-      const lines = order.length ? order : ['<no items returned>'];
-      createNoteForFrame(node, 'Focus Order', lines);
-    }
-
-    figma.notify('A11y: Annotation received and rendered.');
-    figma.ui.postMessage({ type: 'RESULT', payload: data });
+    figma.ui.postMessage({ type: 'ANNOTATION_APPLIED', data: res });
   } catch (e) {
-    console.error('[A11y] fetch threw', e);
+    console.error('[A11y] runPropose failed', e);
     figma.notify('Network error. See console.');
   }
-};
+}

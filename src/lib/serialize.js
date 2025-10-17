@@ -35,7 +35,7 @@ function isFocusableHeuristic(node, platform) {
       focusable = true;
       return { focusable, role: forcedRole || nameRole || (platform === 'web' ? 'button' : 'button') };
     }
-  } catch {}
+  } catch (e) { /* no-op */ }
 
   return { focusable, role: nameRole };
 }
@@ -43,7 +43,7 @@ function isFocusableHeuristic(node, platform) {
 function toDTO(n, platform) {
   const { focusable, role } = isFocusableHeuristic(n, platform);
   const rect = ('absoluteTransform' in n && 'width' in n && 'height' in n)
-    ? { x: n.x ?? 0, y: n.y ?? 0, w: n.width ?? 0, h: n.height ?? 0 }
+    ? { x: (n.x !== null && n.x !== undefined ? n.x : 0), y: (n.y !== null && n.y !== undefined ? n.y : 0), w: (n.width !== null && n.width !== undefined ? n.width : 0), h: (n.height !== null && n.height !== undefined ? n.height : 0) }
     : undefined;
 
   const kids = ('children' in n) ? n.children
@@ -51,15 +51,13 @@ function toDTO(n, platform) {
     .sort(readingOrder)
     .map(c => toDTO(c, platform)) : [];
 
-  return {
+  return Object.assign({}, {
     name: n.name,
     type: n.type,
     visible: n.visible !== false,
     role,
-    focusable,
-    ...(rect || {}),
-    ...(kids.length ? { children: kids } : {})
-  };
+    focusable
+  }, rect || {}, kids.length ? { children: kids } : {});
 }
 
 // Export for use in main plugin code
