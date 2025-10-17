@@ -1,8 +1,15 @@
 import express from 'express';
+import cors from 'cors';
 import crypto from 'crypto';
-import fetch from 'node-fetch';
 
-// Trigger deployment for visual annotations and syntax fixes
+const app = express();
+
+// CORS + body parsing
+app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'] }));
+app.use(express.json({ limit: '4mb' })); // increased for larger frame trees
+
+// quick health check (must be FAST)
+app.get('/health', (req, res) => res.status(200).send('ok'));
 
 // Inline focusable extractor to avoid module resolution issues
 function isLikelyButton(node) {
@@ -130,18 +137,16 @@ app.post('/annotate', express.json({ limit: '4mb' }), async (req, res) => {
     cache.set(cacheKey, annotations);
     res.json({ ok: true, annotations, checksum });
   } catch (e) {
-    console.error('[SRV] annotate error', e);
-    res.status(500).json({ ok: false, error: 'server_error' });
+    console.error('[SRV] /annotate error', e);
+    return res.status(500).json({ ok: false, error: String(e && e.message || e) });
   }
 });
-
-// Health (keep)
-app.get('/health', (req, res) => res.set(CORS).json({ ok: true }));
-
-const port = process.env.PORT || 10000;
 
 // Export app for testing
 export { app };
 
-// Start server
-app.listen(port, () => console.log(`[SRV] Listening on :${port}`));
+// ***CRITICAL*** — bind to Render's provided PORT and 0.0.0.0
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[SRV] Listening on :${PORT}`);
+});
