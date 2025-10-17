@@ -14,7 +14,7 @@
     "body-parser": "^1.20.2",
     "dotenv": "^16.4.5",
     "node-fetch": "^3.3.2",
-    "openai": "^6.1.0"
+    "openai": "^4.59.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",

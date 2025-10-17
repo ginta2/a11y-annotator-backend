@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
+import OpenAI from 'openai';
 
 const app = express();
 
@@ -11,120 +12,184 @@ app.use(express.json({ limit: '4mb' })); // increased for larger frame trees
 // quick health check (must be FAST)
 app.get('/health', (req, res) => res.status(200).send('ok'));
 
-// Inline focusable extractor to avoid module resolution issues
-function isLikelyButton(node) {
-  const n = (node.name || '').toLowerCase();
-  return n.includes('btn') || n.includes('button') || (node.cornerRadius > 0 && node.children && node.children.some && node.children.some(function(c) { return c.type === 'TEXT'; }));
+// ---- OpenAI client ----
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ---- In-memory cache ----
+const ANNO_CACHE = new Map();
+
+// ---- Utils ----
+function quickHash(str) {
+  let h = 0, i = 0, len = str.length;
+  while (i < len) { h = (h << 5) - h + str.charCodeAt(i++) | 0; }
+  return (h >>> 0).toString(16);
 }
 
-function isLikelyHeading(node) {
-  const n = (node.name || '').toLowerCase();
-  return n.startsWith('h1') || n.startsWith('h2') || n.includes('title') || n.includes('header') || (node.fontSize >= 20 && node.fontWeight >= 600);
-}
-
-function visibleText(node) {
-  if (node.type === 'TEXT' && typeof node.characters === 'string') return node.characters.trim().slice(0, 80);
-  const t = node.children && node.children.find && node.children.find(function(c) { return c.type === 'TEXT' && c.characters; });
-  return ((t && t.characters) || node.name || '').toString().trim().slice(0, 80);
-}
-
-function labelFor(node) {
-  const t = visibleText(node);
-  if (isLikelyButton(node)) return 'Button: ' + (t || node.name || 'Unnamed');
-  if (isLikelyHeading(node)) return 'Heading: ' + (t || node.name || 'Untitled');
-  return t ? t : (node.name || 'Item');
-}
-
-function extractAndOrder(root, cap) {
-  if (cap === undefined) cap = 25;
-  
-  const out = [];
-  (function walk(n) {
-    if (!n) return;
-    const name = (n.name || '').toLowerCase();
-    const candidate =
-      n.type === 'TEXT' ||
-      isLikelyButton(n) ||
-      name.includes('link') || name.includes('cta') || name.includes('nav') ||
-      n.role === 'button' || n.role === 'link';
-    if (candidate) out.push({ 
-      id: n.id, 
-      label: labelFor(n), 
-      x: (n.absoluteX !== null && n.absoluteX !== undefined ? n.absoluteX : n.x) || 0, 
-      y: (n.absoluteY !== null && n.absoluteY !== undefined ? n.absoluteY : n.y) || 0 
-    });
-    if (Array.isArray(n.children)) n.children.forEach(walk);
-  })(root);
-
-  out.sort(function(a, b) { return (a.y - b.y) || (a.x - b.x); });
-  if (out.length > cap) out.length = cap;
-  return out;
-}
-
-const cache = new Map();
-
-function normalizeTree(n) {
-  // drop volatile fields (ids/coords) for checksum determinism
-  const kids = (n.children || []).map(normalizeTree);
-  const out = { name: n.name, type: n.type, visible: n.visible, role: n.role, focusable: n.focusable };
-  if (kids.length) out.children = kids;
-  return out;
-}
-
-function sha256(s) { 
-  return crypto.createHash('sha256').update(s).digest('hex'); 
-}
-
-function countFocusables(n) {
-  return (n.focusable ? 1 : 0) + (n.children && n.children.reduce ? n.children.reduce((a, c) => a + countFocusables(c), 0) : 0);
-}
-
-function pruneTree(n, budget = 1500) {
-  // cap total nodes to keep prompts small
-  const queue = [n];
-  let count = 0;
-  while (queue.length && count < budget) {
-    const x = queue.shift();
-    count++;
-    if (x.children && x.children.forEach) {
-      x.children.forEach(ch => queue.push(ch));
-    }
+function flattenIds(node, out) {
+  if (!node) return;
+  if (!out) out = new Set();
+  if (node.id) out.add(node.id);
+  if (Array.isArray(node.children)) {
+    for (const c of node.children) flattenIds(c, out);
   }
-  // if exceeded, drop deep children
-  return n;
+  return out;
 }
 
-app.post('/annotate', async (req, res) => {
+function readingOrder(a, b) {
+  const ay = typeof a.y === 'number' ? a.y : 0;
+  const by = typeof b.y === 'number' ? b.y : 0;
+  if (Math.abs(ay - by) > 6) return ay - by;
+  const ax = typeof a.x === 'number' ? a.x : 0;
+  const bx = typeof b.x === 'number' ? b.x : 0;
+  return ax - bx;
+}
 
+function guessLabelRole(name) {
+  const n = (name || '').toLowerCase();
+  if (/\b(button|cta|start|submit|save|next|continue|swap)\b/.test(n)) return { label: 'primary-cta', role: 'button' };
+  if (/\b(link|learn more|details|back)\b/.test(n)) return { label: 'link', role: 'link' };
+  if (/\b(input|email|password|search|textbox)\b/.test(n)) return { label: 'input', role: 'textbox' };
+  if (/\b(nav|navigation|menu)\b/.test(n)) return { label: 'navigation', role: 'navigation' };
+  if (/\b(header|title|app bar|top nav)\b/.test(n)) return { label: 'header', role: 'landmark' };
+  return { label: 'item', role: 'generic' };
+}
+
+function heuristicFallback(frame) {
+  // depth-first gather nodes with simple filters
+  const acc = [];
+  (function walk(n) {
+    if (!n || n.visible === false) return;
+    const hasSize = typeof n.w === 'number' && typeof n.h === 'number' ? (n.w > 0 && n.h > 0) : true;
+    if (hasSize) acc.push(n);
+    if (Array.isArray(n.children)) for (const c of n.children) walk(c);
+  })(frame.tree || { children: frame.children || [] });
+
+  acc.sort(readingOrder);
+  const seen = new Set();
+  const order = [];
+  for (const n of acc) {
+    if (!n.id || seen.has(n.id)) continue;
+    seen.add(n.id);
+    const { label, role } = guessLabelRole(n.name);
+    order.push({ id: n.id, label, role });
+    if (order.length >= 25) break;
+  }
+  return [{ frameId: frame.id, order, notes: 'heuristic-fallback' }];
+}
+
+function sanitizeOutput(modelOut, validIds, frameId) {
   try {
-    const { frames = [], platform, prompt = '' } = req.body || {};
-    
-    // Build a checksum of structure (ids, bbox, names). Expect client to send minimal tree.
-    const rawKey = JSON.stringify(frames.map(function(f) {
-      return {
-        id: f.id, 
-        name: f.name, 
-        box: f.box,
-        // include children signature if provided
-        sig: f.children && f.children.map ? f.children.map(function(c) { return [c.id, c.name, c.box]; }) : []
-      };
-    }));
-    const checksum = crypto.createHash('md5').update(rawKey).digest('hex').slice(0, 8);
+    const ann = modelOut && modelOut.annotations && modelOut.annotations[0];
+    if (!ann || !Array.isArray(ann.order)) return null;
 
-    const cacheKey = 'annotate:' + checksum + ':' + (platform || 'web');
-    const cached = cache.get(cacheKey);
-    if (cached) return res.json({ ok: true, annotations: cached, notes: 'cacheHit', checksum });
+    const filtered = [];
+    const seen = new Set();
+    for (const it of ann.order) {
+      if (!it || typeof it.id !== 'string') continue;
+      if (!validIds.has(it.id)) continue;
+      if (seen.has(it.id)) continue;
+      seen.add(it.id);
+      filtered.push({
+        id: it.id,
+        label: String(it.label || 'item'),
+        role: it.role ? String(it.role) : undefined,
+      });
+    }
+    return [{ frameId, order: filtered, notes: ann.notes || '' }];
+  } catch {
+    return null;
+  }
+}
 
-    const annotations = frames.map(function(f) {
-      const order = extractAndOrder(f);
-      return { frameId: f.id, order };
-    });
+// ---- /annotate endpoint ----
+app.post('/annotate', async (req, res) => {
+  try {
+    const { platform, frames } = req.body || {};
+    if (!Array.isArray(frames) || frames.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No frames' });
+    }
+    const frame = frames[0];
+    const tree = frame.tree || { children: frame.children || [] };
 
-    cache.set(cacheKey, annotations);
-    res.json({ ok: true, annotations, checksum });
-  } catch (e) {
-    console.error('[SRV] /annotate error', e);
-    return res.status(500).json({ ok: false, error: String(e && e.message || e) });
+    // Build checksum (stable across same structure)
+    const keyRaw = JSON.stringify({ platform, id: frame.id, name: frame.name, box: frame.box, tree });
+    const checksum = quickHash(keyRaw);
+
+    // Cache hit?
+    const cached = ANNO_CACHE.get(checksum);
+    if (cached) {
+      return res.json({ ok: true, checksum, annotations: cached.annotations, notes: 'cacheHit' });
+    }
+
+    // Valid IDs set for validation
+    const validIds = flattenIds(tree);
+
+    // Compose prompts
+    const systemPrompt = `
+You are an accessibility engine that assigns a logical keyboard/touch focus order for a single Figma frame.
+You will receive a JSON tree of nodes (name, type, visible, x, y, w, h, optional component/variant info, and children).
+Return a JSON object:
+{
+  "annotations": [
+    {
+      "frameId": string,
+      "order": [
+        { "id": string, "label": string, "role": string }
+      ],
+      "notes": string
+    }
+  ]
+}
+Rules:
+- Include only nodes that should receive focus.
+- Prefer top-to-bottom, left-to-right order unless strong semantics (nav, modal, primary CTA) override.
+- Use ARIA/WAI-ARIA roles when possible (button, link, input, tab, navigation, main, header, footer).
+- Never invent node IDs; only use those present in the input tree.
+- If uncertain, include fewer items rather than guessing and add a brief explanation in "notes".
+- Output must be strict JSON matching the schema; do not include prose outside JSON.
+`.trim();
+
+    const userPrompt = [
+      `Platform: ${platform || 'web'}`,
+      `Frame: ${frame.name || ''}`,
+      `Tree:`,
+      JSON.stringify(tree, null, 2)
+    ].join('\n');
+
+    let modelOut = null;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: process.env.MODEL || 'gpt-4o-mini',
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+      });
+      modelOut = JSON.parse(completion.choices[0].message.content);
+    } catch (e) {
+      console.error('[SRV] OpenAI error:', e && e.message || e);
+    }
+
+    // Validate & sanitize
+    let annotations = null;
+    if (modelOut) {
+      annotations = sanitizeOutput(modelOut, validIds || new Set(), frame.id);
+    }
+
+    // Fallback if needed
+    if (!annotations || !annotations[0] || !annotations[0].order || annotations[0].order.length === 0) {
+      annotations = heuristicFallback({ id: frame.id, tree });
+    }
+
+    // Cache and return
+    const payload = { ok: true, checksum, annotations };
+    ANNO_CACHE.set(checksum, payload);
+    return res.json(payload);
+  } catch (err) {
+    console.error('[SRV] /annotate error', err);
+    return res.status(500).json({ ok: false, error: String(err && err.message || err) });
   }
 });
 
