@@ -51,6 +51,15 @@ module.exports = {
     // Documentation
     'valid-jsdoc': 'off', // We'll use JSDoc comments manually
     
+    // Figma Runtime ES5 Compatibility Guards
+    'no-restricted-syntax': [
+      'error',
+      { 'selector': 'CatchClause[param=null]', 'message': 'Figma runtime: no optional catch binding' },
+      { 'selector': 'OptionalMemberExpression', 'message': 'Figma runtime: no optional chaining' },
+      { 'selector': 'OptionalCallExpression', 'message': 'Figma runtime: no optional call' },
+      { 'selector': 'LogicalExpression[operator=\'??\']', 'message': 'Figma runtime: no nullish coalescing' }
+    ]
+    
     // Accessibility (for UI code)
     'jsx-a11y/alt-text': 'off', // Not applicable for vanilla JS
     'jsx-a11y/anchor-has-content': 'off',

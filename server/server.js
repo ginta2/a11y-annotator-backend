@@ -24,7 +24,7 @@ app.post('/annotate', async (req, res) => {
 
     // TODO: plug in your AI here. For now, return a mock.
     const annotations = frames.map((f, i) => ({
-      frameId: f.id ?? `frame-${i}`,
+      frameId: (f.id !== null && f.id !== undefined ? f.id : `frame-${i}`),
       order: ['header', 'main', 'primary-cta'],
       notes: [
         `Platform: ${platform || 'unknown'}`,

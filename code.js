@@ -216,7 +216,7 @@ figma.ui.onmessage = async (msg) => {
       }
       const node = figma.getNodeById(frameId);
       if (!node || node.type !== 'FRAME') {
-        console.warn('[A11y] Could not find target frame', frameId, node?.type);
+        console.warn('[A11y] Could not find target frame', frameId, (node && node.type));
         figma.notify('A11y: Could not find one target frame (see console).');
         continue;
       }
