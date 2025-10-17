@@ -285,26 +285,28 @@ function computeChecksum(annos) {
 }
 
 async function applyAnnotations(annos) {
-  const newChecksum = computeChecksum(annos);
-  if (newChecksum === lastChecksum) {
+  var selection = figma.currentPage.selection[0];
+  if (!selection || selection.type !== 'FRAME') return;
+
+  // no annotations? clear old note
+  if (!annos || !annos.length || !annos[0] || !annos[0].order) {
+    removeOldNotes(selection);
+    lastChecksum = null;
+    figma.notify('A11y: No focusable items found.');
+    return;
+  }
+
+  var newChecksum = computeChecksum(annos);
+  if (newChecksum && newChecksum === lastChecksum) {
+    // nothing changed – avoid flicker
     figma.notify('Focus order already up to date');
     return;
   }
-  
-  // Apply visual annotations
-  if (annos && annos.length > 0) {
-    const annotation = annos[0];
-    if (annotation && annotation.order && annotation.order.length > 0) {
-      const selection = figma.currentPage.selection[0];
-      if (selection && selection.type === 'FRAME') {
-        // Remove old notes first
-        removeOldNotes(selection);
-        // Render new note
-        await renderFocusOrderNote(selection, annotation);
-      }
-    }
-  }
-  
+
+  // redraw the note
+  removeOldNotes(selection);
+  await renderFocusOrderNote(selection, annos[0]);
+
   lastChecksum = newChecksum;
   figma.notify('A11y: Annotation received and rendered.');
 }
