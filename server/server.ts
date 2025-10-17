@@ -26,7 +26,7 @@ function normalizeTree(n: NodeDTO): any {
 function sha256(s: string) { return crypto.createHash('sha256').update(s).digest('hex'); }
 
 function countFocusables(n: NodeDTO): number {
-  return (n.focusable ? 1 : 0) + (n.children?.reduce((a, c) => a + countFocusables(c), 0) || 0);
+  return (n.focusable ? 1 : 0) + (n.children && n.children.reduce ? n.children.reduce((a, c) => a + countFocusables(c), 0) : 0);
 }
 
 function pruneTree(n: NodeDTO, budget = 1500): NodeDTO {
@@ -36,7 +36,9 @@ function pruneTree(n: NodeDTO, budget = 1500): NodeDTO {
   while (queue.length && count < budget) {
     const x = queue.shift()!;
     count++;
-    x.children?.forEach(ch => queue.push(ch));
+    if (x.children && x.children.forEach) {
+      x.children.forEach(ch => queue.push(ch));
+    }
   }
   // if exceeded, drop deep children
   return n;
@@ -44,7 +46,7 @@ function pruneTree(n: NodeDTO, budget = 1500): NodeDTO {
 
 app.post('/annotate', async (req, res) => {
   const { platform, frame } = req.body as Body;
-  if (!platform || !frame?.tree) return res.status(400).json({ ok: false, error: 'bad_request' });
+  if (!platform || !frame || !frame.tree) return res.status(400).json({ ok: false, error: 'bad_request' });
 
   const normalized = normalizeTree(frame.tree);
   const checksum = sha256(JSON.stringify(normalized));
@@ -70,7 +72,9 @@ app.post('/annotate', async (req, res) => {
       const label = (n.name || '').trim();
       const here = path.concat([label]).filter(Boolean).join(' > ');
       if (n.focusable) items.push({ label, role: n.role || 'button', path: here });
-      n.children?.forEach(c => walk(c, path.concat([label])));
+        if (n.children && n.children.forEach) {
+          n.children.forEach(c => walk(c, path.concat([label])));
+        }
     };
     walk(frame.tree);
     const data = { frameName: frame.name, items };
@@ -107,9 +111,9 @@ ${JSON.stringify(treeForModel, null, 2)}`;
     })
   }).then(r => r.json());
 
-  const content = completion?.choices?.[0]?.message?.content || '{}';
+  const content = (completion && completion.choices && completion.choices[0] && completion.choices[0].message && completion.choices[0].message.content) || '{}';
   let data: any;
-  try { data = JSON.parse(content.match(/\{[\s\S]*\}$/)?.[0] || content); }
+  try { data = JSON.parse((content.match(/\{[\s\S]*\}$/) && content.match(/\{[\s\S]*\}$/)[0]) || content); }
   catch { data = { frameName: frame.name, items: [] }; }
 
   cache.set(cacheKey, data);
