@@ -4,6 +4,37 @@
 
 const API = 'https://a11y-annotator-backend.onrender.com';
 
+// Tiny helpers
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function waitForHealthy({ timeoutMs = 45000, pollMs = 800 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(`${API}/health`, { method: 'GET' });
+      if (res.ok) return true;
+    } catch (_) { /* ignore until healthy */ }
+    await sleep(pollMs);
+  }
+  return false;
+}
+
+async function withRetry(fn, { retries = 5, baseDelay = 500 } = {}) {
+  let attempt = 0, delay = baseDelay;
+  for (;;) {
+    try { return await fn(); }
+    catch (e) {
+      attempt++;
+      // Only retry on transient server/network errors
+      const msg = String(e && e.message || e);
+      const transient = /(\^HTTP (429|500|502|503|504)|network|fetch|timeout)/i.test(msg);
+      if (!transient || attempt > retries) throw e;
+      await sleep(delay);  // backoff
+      delay = Math.min(delay * 1.8, 5000);
+    }
+  }
+}
+
 /**
  * Safe POST request using only Figma-allowed fetch init keys
  * @param {string} url - Target URL
@@ -355,8 +386,12 @@ async function runPropose({ frames, platform, prompt }) {
     return;
   }
 
-  // Warmup is cheap; do it here too in case plugin just woke up
-  try { await fetch(`${API}/health`, { method: 'GET' }); } catch (e) { /* no-op */ }
+  // Ensure server is up before we POST (free Render can be cold)
+  figma.notify('Starting A11y service…', { timeout: 2000 });
+  const healthy = await waitForHealthy();
+  if (!healthy) {
+    figma.notify('A11y service is still waking up. Retrying…', { timeout: 3000 });
+  }
 
   // Compute serialization mode (small widget vs larger section)
   const isSmall =
@@ -392,10 +427,10 @@ async function runPropose({ frames, platform, prompt }) {
 
   let res;
   try {
-    res = await safePostJSON(`${API}/annotate`, payload);
+    res = await withRetry(() => safePostJSON(`${API}/annotate`, payload));
   } catch (e) {
     console.error('[NET] annotate failed', e);
-    figma.notify('Network error. See console.');
+    figma.notify('A11y: service unavailable (cold start or network). Try again.');
     return;
   }
 
