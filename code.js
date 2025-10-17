@@ -154,12 +154,32 @@ figma.ui.onmessage = async (msg) => {
   }
   const frame = sel[0];
 
-  // 2) Export frame
+  // 2) Export frame with size validation
   let bytes, width, height;
   try {
+    // Check frame size to prevent memory issues
+    const maxSize = 4000; // Max width/height in pixels
+    if (frame.width > maxSize || frame.height > maxSize) {
+      figma.notify(`Frame too large (${Math.round(frame.width)}x${Math.round(frame.height)}). Max size: ${maxSize}x${maxSize}`);
+      return;
+    }
+    
+    // Check if frame has reasonable area
+    const maxArea = 8000000; // 8MP max area
+    if (frame.width * frame.height > maxArea) {
+      figma.notify(`Frame area too large (${Math.round(frame.width * frame.height / 1000000)}MP). Max: ${maxArea / 1000000}MP`);
+      return;
+    }
+    
     bytes  = await frame.exportAsync({ format: 'PNG' });
     width  = frame.width;
     height = frame.height;
+    
+    // Validate export size
+    if (bytes.length > 10 * 1024 * 1024) { // 10MB limit
+      figma.notify('Exported frame too large (>10MB). Try reducing frame size.');
+      return;
+    }
   } catch (e) {
     console.error('[A11y] exportAsync failed', e);
     figma.notify('Export failed. See console.');
@@ -192,7 +212,18 @@ figma.ui.onmessage = async (msg) => {
 
     if (!res.ok || (data && data.ok === false)) {
       console.error('[A11y] server reported failure:', res.status, data);
-      figma.notify('Server error: ' + res.status);
+      
+      // Provide specific error messages based on status code
+      let errorMsg = 'Server error: ' + res.status;
+      if (res.status === 413) {
+        errorMsg = 'Frame too large. Try reducing frame size.';
+      } else if (res.status === 400 && data && data.error) {
+        errorMsg = 'Request error: ' + data.error;
+      } else if (res.status >= 500) {
+        errorMsg = 'Server temporarily unavailable. Try again later.';
+      }
+      
+      figma.notify(errorMsg);
       return;
     }
 

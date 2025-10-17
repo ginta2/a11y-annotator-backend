@@ -18,8 +18,22 @@ app.post('/annotate', async (req, res) => {
 
   try {
     const { frames, platform, prompt } = req.body || {};
+    
+    // Validate payload size
+    const payloadSize = JSON.stringify(req.body).length;
+    if (payloadSize > 50 * 1024 * 1024) { // 50MB limit
+      console.warn('[SRV] Payload too large:', Math.round(payloadSize / 1024 / 1024), 'MB');
+      return res.status(413).json({ ok: false, error: 'Payload too large' });
+    }
+    
     if (!Array.isArray(frames) || frames.length === 0) {
       return res.status(400).json({ ok: false, error: 'No frames provided' });
+    }
+    
+    // Limit number of frames
+    if (frames.length > 10) {
+      console.warn('[SRV] Too many frames:', frames.length);
+      return res.status(400).json({ ok: false, error: 'Too many frames (max 10)' });
     }
 
     // TODO: plug in your AI here. For now, return a mock.
