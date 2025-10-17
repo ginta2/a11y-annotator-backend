@@ -87,82 +87,71 @@ function nearestExportable(node) {
   return cur || null;
 }
 
-function collectSelectionFrames() {
-  const sel = figma.currentPage.selection || [];
-  const frames = [];
-  for (const n of sel) {
-    // Walk up to nearest exportable container (keeps behaviour predictable)
-    let cur = n;
-    while (cur && typeof cur.exportAsync !== 'function') {
-      cur = cur.parent;
-    }
-    const pick = cur || n;
-    frames.push({
-      id: pick.id,
-      name: pick.name,
-      type: pick.type,
-      width: Math.round(pick.width || 0),
-      height: Math.round(pick.height || 0),
-      x: Math.round(pick.absoluteTransform?.[0]?.[2] || 0),
-      y: Math.round(pick.absoluteTransform?.[1]?.[2] || 0),
-    });
-  }
-  return frames;
-}
-
-function normalizeType(t) {
-  return (t || '').toString().trim().toLowerCase();
-}
 
 figma.ui.onmessage = async (msg) => {
-  console.log('[A11y] ui message ->', msg);
-  const t = msg?.type;
-  if (t === 'runPropose' || t === 'PROPOSE') {
-    figma.notify('Sending to /annotate…');
-    const prompt = (msg?.prompt ?? msg?.textPrompt ?? '').toString();
-    let frames = Array.isArray(msg?.frames) ? msg.frames : null;
-    if (!frames || frames.length === 0) {
-      frames = collectSelectionFrames();
-      if (frames.length === 0) {
-        figma.notify('Select at least one frame/layer and try again.');
-        return;
-      }
-    }
-    await runPropose({
-      frames,
-      platform: msg?.platform || 'web',
-      prompt,
+  const type = msg?.type;
+  if (type !== 'runPropose' && type !== 'PROPOSE') {
+    console.warn('[A11y] unknown ui message type', type);
+    return;
+  }
+
+  const platform = msg?.platform || 'web';
+  const prompt   = msg?.prompt   || '';
+
+  // 1) Collect and validate selection
+  const sel = figma.currentPage.selection;
+  if (!sel.length || sel[0].type !== 'FRAME') {
+    figma.notify('Select a frame first');
+    return;
+  }
+  const frame = sel[0];
+
+  // 2) Export the frame to bytes
+  let bytes, png, width, height;
+  try {
+    bytes = await frame.exportAsync({ format: 'PNG' });
+    png = new Uint8Array(bytes);
+    width  = frame.width;
+    height = frame.height;
+  } catch (e) {
+    console.error('[A11y] exportAsync failed', e);
+    figma.notify('Export failed. See console.');
+    return;
+  }
+
+  // 3) Build payload and send
+  const payload = {
+    platform,
+    prompt,
+    frames: [{
+      bytes: Array.from(png),  // server can accept base64 if you prefer
+      width,
+      height,
+      name: frame.name,
+      id: frame.id
+    }]
+  };
+
+  try {
+    console.log('[A11y] POST /annotate payload keys ->', Object.keys(payload));
+    const res = await fetch(`${API}/annotate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
-  } else {
-    console.warn('[A11y] unknown ui message type', t);
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || data?.ok === false) {
+      console.error('[A11y] server reported failure:', res.status, data);
+      figma.notify(`Server error: ${res.status}`);
+      return;
+    }
+
+    console.log('[A11y] /annotate JSON:', data);
+    // apply annotations …
+    figma.ui.postMessage({ type: 'RESULT', payload: data });
+  } catch (e) {
+    console.error('[A11y] fetch threw', e);
+    figma.notify('Network error. See console.');
   }
 };
-
-async function runPropose({ frames, platform, prompt }) {
-  const payload = { frames, platform, prompt };
-  console.log('[A11y] sending /annotate ->', payload);
-  let data;
-  try {
-    data = await safePostJSON(`${API}/annotate`, payload);
-    console.log('[A11y] /annotate response:', data);
-  } catch (e) {
-    console.error('[A11y] /annotate failed:', e);
-    figma.notify(`Request failed: ${e?.message || e}`);
-    return;
-  }
-
-  if (!data || data.ok === false) {
-    figma.notify('Server reported failure. See console.');
-    console.error('[A11y] server reported failure:', data);
-    return;
-  }
-  if (!Array.isArray(data.annotations)) {
-    figma.notify('Unexpected server payload. See console.');
-    console.error('[A11y] Unexpected payload shape:', data);
-    return;
-  }
-
-  // TODO: apply annotations to the canvas as needed
-  console.log('[A11y] applying annotations:', data.annotations);
-  figma.ui.postMessage({ type: 'RESULT', payload: data });
-}
