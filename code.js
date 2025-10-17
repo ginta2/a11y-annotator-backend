@@ -202,8 +202,8 @@ figma.ui.onmessage = async (msg) => {
     console.log('[A11y] applying annotations:', data.annotations);
 
     // Best-effort font load for note text
-    try { await figma.loadFontAsync({ family: 'Inter', style: 'Regular' }); } catch {}
-    try { await figma.loadFontAsync({ family: 'Inter', style: 'Bold' }); } catch {}
+    try { await figma.loadFontAsync({ family: 'Inter', style: 'Regular' }); } catch (e) {}
+    try { await figma.loadFontAsync({ family: 'Inter', style: 'Bold' }); } catch (e) {}
 
     for (const ann of data.annotations) {
       const frameId = ann.frameId || ann.frameID || ann.id;
