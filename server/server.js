@@ -1,11 +1,39 @@
 // server/server.js
 
 import express from 'express';
-import cors from 'cors';
 import dotenv from 'dotenv';
 
 dotenv.config();
 const app = express();
+
+// CORS middleware for Figma plugins - MUST be first!
+const ALLOWED_ORIGINS = new Set([
+  'https://www.figma.com', // Figma web editor
+  'null' // Figma desktop (origin is "null")
+]);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin || 'null';
+  
+  if (ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', 'https://www.figma.com');
+  }
+  // res.setHeader('Access-Control-Allow-Origin', '*'); // Keeping it tight is usually better.
+  
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS'); // We only ever send JSON with POST
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // res.setHeader('Access-Control-Allow-Credentials', 'true'); // leave off
+  
+  // Short-circuit preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end(); // 204: No Content - quickest successful preflight
+  }
+  
+  next();
+});
 
 // Parse JSON
 app.use(express.json({ limit: '2mb' }));
@@ -13,52 +41,6 @@ app.use(express.json({ limit: '2mb' }));
 // Debug logging for all requests
 app.use((req, _res, next) => {
   console.log(`[REQ] ${req.method} ${req.path} origin=${req.headers.origin || 'none'}`);
-  next();
-});
-
-const allowOrigin = (origin, cb) => {
-  // Figma Desktop & local files show Origin "null"
-  if (!origin || origin === 'null') return cb(null, true);
-  // Allow our production host
-  const allowed = [
-    'https://a11y-annotator-backend.onrender.com'
-    // add more if needed
-  ];
-  if (allowed.includes(origin)) return cb(null, true);
-  // also allow https in general if you want to be permissive:
-  if (/^https:\/\//.test(origin)) return cb(null, true);
-  return cb(null, false);
-};
-
-app.use(cors({
-  origin: allowOrigin,
-  methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-Requested-With'],
-  maxAge: 86400,
-}));
-
-// Ensure preflights are handled for all routes
-app.options('*', cors({
-  origin: allowOrigin,
-  methods: ['GET','POST','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization','X-Requested-With'],
-  maxAge: 86400,
-}));
-
-// Also add a tiny middleware to always emit ACAO and Vary for safety
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (!origin || origin === 'null') {
-    res.setHeader('Access-Control-Allow-Origin', 'null');
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
-  // Security headers
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'no-referrer');
   next();
 });
 
