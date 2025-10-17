@@ -39,18 +39,19 @@
         return (t && t.value) || '';
       }
 
+      // Ensure we always send via pluginMessage wrapper
+      function sendPropose({ platform, prompt, frames }) {
+        const msg = { type: 'PROPOSE_FOCUS_ORDER', platform, prompt: prompt || '', frames: frames || [] };
+        console.log('[UI] sending', msg);
+        parent.postMessage({ pluginMessage: msg }, '*');
+      }
+
       document.getElementById('proposeBtn').onclick = function () {
         setStatus('Sending…');
         var platform = getSelectedPlatform();
         var textPrompt = getTextPrompt();
-        console.log('[UI] Sent PROPOSE_FOCUS_ORDER', {platform, prompt: textPrompt});
-        parent.postMessage({ 
-          pluginMessage: { 
-            type: 'PROPOSE_FOCUS_ORDER', 
-            platform: platform, 
-            prompt: textPrompt 
-          } 
-        }, '*');
+        console.log('[UI] click Propose', { platform, prompt: textPrompt });
+        sendPropose({ platform, prompt: textPrompt });
       };
 
       const statusEl = document.getElementById('status');

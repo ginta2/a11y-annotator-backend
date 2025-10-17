@@ -147,6 +147,34 @@ function toDTO(n, platform) {
   }, rect || {}, kids.length ? { children: kids } : {});
 }
 
+function toDTO_shallow(n, platform) {
+  const children = ('children' in n)
+    ? n.children.filter(c => c.visible !== false).sort(readingOrder).map(c => {
+        const { focusable, role } = isFocusableHeuristic(c, platform);
+        const rect = ('absoluteTransform' in c && 'width' in c && 'height' in c)
+          ? { x: (c.x ?? 0), y: (c.y ?? 0), w: (c.width ?? 0), h: (c.height ?? 0) }
+          : undefined;
+        return Object.assign({}, {
+          name: c.name,
+          type: c.type,
+          visible: c.visible !== false,
+          role,
+          focusable
+        }, rect || {});
+      })
+    : [];
+
+  const rect = ('absoluteTransform' in n && 'width' in n && 'height' in n)
+    ? { x: (n.x ?? 0), y: (n.y ?? 0), w: (n.width ?? 0), h: (n.height ?? 0) }
+    : undefined;
+
+  return Object.assign({}, {
+    name: n.name,
+    type: n.type,
+    visible: n.visible !== false
+  }, rect || {}, { children });
+}
+
 // Track last checksum for UX feedback
 let lastChecksum = null;
 
@@ -169,25 +197,39 @@ function applyAnnotations(annos) {
   figma.notify('A11y: Annotation received and rendered.');
 }
 
-figma.ui.onmessage = async (msg) => {
-  console.log('[A11y] ui message ->', msg);
-  const t = msg && msg.type;
+figma.ui.onmessage = async (msgRaw) => {
+  // Accept raw or wrapped (pluginMessage) payloads
+  const msg = (msgRaw && (msgRaw.type || msgRaw.platform || msgRaw.frames))
+    ? msgRaw
+    : (msgRaw && msgRaw.pluginMessage)
+      ? msgRaw.pluginMessage
+      : null;
 
-  // Accept old and new names so the UI can evolve without breaking
+  console.log('[A11y] ui message ->', msg);
+
+  if (!msg || !msg.type) {
+    console.warn('[A11y] missing or malformed message', msgRaw);
+    figma.notify('A11y: Bad message from UI');
+    return;
+  }
+
+  const t = msg.type;
   const isPropose =
     t === 'runPropose' ||
     t === 'PROPOSE' ||
     t === 'PROPOSE_FOCUS_ORDER';
 
-  if (isPropose) {
-    runPropose({
-      frames: msg.frames,
-      platform: msg.platform,
-      prompt: msg.prompt || '',
-    });
-  } else {
-    console.warn('[A11y] unknown ui message type', t);
+  if (!isPropose) {
+    console.warn('[A11y] unknown message type', t);
+    return;
   }
+
+  // Hand off
+  await runPropose({
+    frames: msg.frames,
+    platform: msg.platform,
+    prompt: msg.prompt || '',
+  });
 };
 
 async function runPropose({ frames, platform, prompt }) {
@@ -195,57 +237,74 @@ async function runPropose({ frames, platform, prompt }) {
 
   if (!selection || selection.type !== 'FRAME') {
     figma.notify('Select a frame to annotate.');
+    console.warn('[A11y] no FRAME selected');
     return;
   }
 
-  const frameTree = toDTO(selection, platform);
+  // Warmup is cheap; do it here too in case plugin just woke up
+  try { await fetch(`${API}/health`, { method: 'GET' }); } catch {}
+
+  // Compute serialization mode (small widget vs larger section)
+  const isSmall =
+    (selection.width * selection.height) < 120000 ||
+    (('children' in selection) && selection.children.filter(c => c.visible !== false).length <= 5);
+
+  console.log('[A11y] selection', {
+    id: selection.id,
+    name: selection.name,
+    w: selection.width,
+    h: selection.height,
+    isSmall,
+    platform
+  });
+
+  // Serialize
+  const dto = isSmall
+    ? toDTO_shallow(selection, platform) // direct children only
+    : toDTO(selection, platform);        // recursive
 
   const payload = {
     platform,
     frames: [{
       id: selection.id,
       name: selection.name,
-      box: {
-        x: selection.x,
-        y: selection.y,
-        w: selection.width,
-        h: selection.height
-      },
-      children: frameTree.children || []
+      box: { x: selection.x, y: selection.y, w: selection.width, h: selection.height },
+      // For server simplicity, pass children only (server knows it's a frame)
+      children: dto.children || []
     }]
   };
 
+  console.log('[NET] POST /annotate payload', payload);
+
+  let res;
   try {
-    const res = await fetch(`${API}/annotate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(r => r.json()).catch(() => ({ ok: false }));
-
-    if (!res || !res.ok) {
-      figma.notify('Focus order service unavailable.');
-      return;
-    }
-
-    // Apply annotations with UX feedback
-    applyAnnotations(res.annotations);
-
-    // Persist annotation on the frame
-    const annotation = res.annotations && res.annotations[0] ? res.annotations[0] : null;
-    const itemCount = annotation && annotation.order ? annotation.order.length : 0;
-    
-    selection.setPluginData('a11y-focus-order', JSON.stringify({
-      platform,
-      frameId: selection.id,
-      frameName: selection.name,
-      checksum: res.checksum,
-      items: annotation ? annotation.order : [],
-      at: new Date().toISOString()
-    }));
-
-    figma.ui.postMessage({ type: 'ANNOTATION_APPLIED', data: res });
+    res = await safePostJSON(`${API}/annotate`, payload);
   } catch (e) {
-    console.error('[A11y] runPropose failed', e);
+    console.error('[NET] annotate failed', e);
     figma.notify('Network error. See console.');
+    return;
   }
+
+  console.log('[NET] /annotate response', res);
+
+  if (!res || !res.ok) {
+    figma.notify('Focus order service unavailable.');
+    console.warn('[NET] bad response', res);
+    return;
+  }
+
+  applyAnnotations(res.annotations);
+
+  const annotation = res.annotations && res.annotations[0] ? res.annotations[0] : null;
+  selection.setPluginData('a11y-focus-order', JSON.stringify({
+    platform,
+    frameId: selection.id,
+    frameName: selection.name,
+    checksum: res.checksum,
+    items: annotation ? annotation.order : [],
+    at: new Date().toISOString()
+  }));
+
+  figma.ui.postMessage({ type: 'ANNOTATION_APPLIED', data: res });
+  figma.notify('A11y: Annotation received and rendered.');
 }
