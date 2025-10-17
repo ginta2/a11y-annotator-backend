@@ -89,14 +89,17 @@ function nearestExportable(node) {
 
 
 figma.ui.onmessage = async (msg) => {
-  const type = msg?.type;
+  // SAFELY read fields without optional chaining
+  const hasMsg = msg && typeof msg === 'object';
+  const type = hasMsg ? msg.type : undefined;
+
   if (type !== 'runPropose' && type !== 'PROPOSE') {
     console.warn('[A11y] unknown ui message type', type);
     return;
   }
 
-  const platform = msg?.platform || 'web';
-  const prompt   = msg?.prompt   || '';
+  const platform = hasMsg && typeof msg.platform === 'string' ? msg.platform : 'web';
+  const prompt   = hasMsg && typeof msg.prompt   === 'string' ? msg.prompt   : '';
 
   // 1) Validate selection
   const sel = figma.currentPage.selection;
@@ -106,7 +109,7 @@ figma.ui.onmessage = async (msg) => {
   }
   const frame = sel[0];
 
-  // 2) Export the frame
+  // 2) Export frame
   let bytes, width, height;
   try {
     bytes  = await frame.exportAsync({ format: 'PNG' });
@@ -120,13 +123,14 @@ figma.ui.onmessage = async (msg) => {
 
   // 3) Build payload and POST
   const payload = {
-    platform,
-    prompt,
+    platform: platform,
+    prompt: prompt,
     frames: [{
       bytes: Array.from(new Uint8Array(bytes)),
-      width, height,
+      width: width,
+      height: height,
       id: frame.id,
-      name: frame.name,
+      name: frame.name
     }]
   };
 
@@ -135,13 +139,15 @@ figma.ui.onmessage = async (msg) => {
     const res  = await fetch(`${API}/annotate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     });
-    const data = await res.json().catch(() => ({}));
 
-    if (!res.ok || data?.ok === false) {
+    let data = {};
+    try { data = await res.json(); } catch (_e) {}
+
+    if (!res.ok || (data && data.ok === false)) {
       console.error('[A11y] server reported failure:', res.status, data);
-      figma.notify(`Server error: ${res.status}`);
+      figma.notify('Server error: ' + res.status);
       return;
     }
 

@@ -257,7 +257,7 @@ export class FocusOrderHeuristics {
     const result = manualItems ? [...manualItems] : [];
     
     // Add AI results for items not manually edited
-    const manualNodeIds = new Set(manualItems?.map(item => item.nodeId) || []);
+    const manualNodeIds = new Set(manualItems && manualItems.length ? manualItems.map(item => item.nodeId) : []);
     const aiItemsNotManual = aiItems.filter(item => !manualNodeIds.has(item.nodeId));
     result.push(...aiItemsNotManual);
     

@@ -75,11 +75,11 @@ export class OpenAIFocusOrderAPI {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(`OpenAI API error: ${error.error?.message || 'Unknown error'}`);
+      throw new Error(`OpenAI API error: ${error.error && error.error.message ? error.error.message : 'Unknown error'}`);
     }
 
     const data = await response.json();
-    const content = data.choices[0]?.message?.content;
+    const content = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content ? data.choices[0].message.content : null;
     
     if (!content) {
       throw new Error('No response from OpenAI');
