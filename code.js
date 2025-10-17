@@ -152,7 +152,7 @@ function toDTO_shallow(n, platform) {
     ? n.children.filter(c => c.visible !== false).sort(readingOrder).map(c => {
         const { focusable, role } = isFocusableHeuristic(c, platform);
         const rect = ('absoluteTransform' in c && 'width' in c && 'height' in c)
-          ? { x: (c.x ?? 0), y: (c.y ?? 0), w: (c.width ?? 0), h: (c.height ?? 0) }
+          ? { x: (c.x !== null && c.x !== undefined ? c.x : 0), y: (c.y !== null && c.y !== undefined ? c.y : 0), w: (c.width !== null && c.width !== undefined ? c.width : 0), h: (c.height !== null && c.height !== undefined ? c.height : 0) }
           : undefined;
         return Object.assign({}, {
           name: c.name,
@@ -165,7 +165,7 @@ function toDTO_shallow(n, platform) {
     : [];
 
   const rect = ('absoluteTransform' in n && 'width' in n && 'height' in n)
-    ? { x: (n.x ?? 0), y: (n.y ?? 0), w: (n.width ?? 0), h: (n.height ?? 0) }
+    ? { x: (n.x !== null && n.x !== undefined ? n.x : 0), y: (n.y !== null && n.y !== undefined ? n.y : 0), w: (n.width !== null && n.width !== undefined ? n.width : 0), h: (n.height !== null && n.height !== undefined ? n.height : 0) }
     : undefined;
 
   return Object.assign({}, {
@@ -242,7 +242,7 @@ async function runPropose({ frames, platform, prompt }) {
   }
 
   // Warmup is cheap; do it here too in case plugin just woke up
-  try { await fetch(`${API}/health`, { method: 'GET' }); } catch {}
+  try { await fetch(`${API}/health`, { method: 'GET' }); } catch (e) { /* no-op */ }
 
   // Compute serialization mode (small widget vs larger section)
   const isSmall =
