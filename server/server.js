@@ -2,7 +2,7 @@ import express from 'express';
 import crypto from 'crypto';
 import fetch from 'node-fetch';
 
-// Trigger deployment for UX improvements
+// Trigger deployment for visual annotations and syntax fixes
 
 // Inline focusable extractor to avoid module resolution issues
 function isLikelyButton(node) {
