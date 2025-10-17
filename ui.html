@@ -16,8 +16,8 @@
       <label style="margin-left:12px;"><input type="radio" name="platform" value="web" /> Web (ARIA)</label>
     </div>
     <div class="row">
-      <div id="status" style="font: 12px/1.4 ui-sans-serif, system-ui; margin-bottom: 8px;"></div>
       <button id="proposeBtn">Propose Focus Order</button>
+      <div id="status" style="margin-top:8px; font:12px/1.3 Inter, system-ui; color:#555;"></div>
     </div>
     <div class="row"><textarea id="textPrompt" placeholder="ARIA prompt for web platform..." style="width:100%; height:60px;"></textarea></div>
     <div class="row"><pre id="output"></pre></div>
@@ -43,26 +43,36 @@
         setStatus('Sending…');
         var platform = getSelectedPlatform();
         var textPrompt = getTextPrompt();
-        console.log('[UI] Sent PROPOSE', {platform, prompt: textPrompt});
+        console.log('[UI] Sent runPropose', {platform, prompt: textPrompt});
         parent.postMessage({ 
           pluginMessage: { 
-            type: 'PROPOSE', 
+            type: 'runPropose', 
             platform: platform, 
             prompt: textPrompt 
           } 
         }, '*');
       };
 
-      window.onmessage = function (e) {
-        var msg = e.data && e.data.pluginMessage;
+      const statusEl = document.getElementById('status');
+
+      window.onmessage = (event) => {
+        const msg = event.data.pluginMessage;
         if (!msg) return;
+
         if (msg.type === 'RESULT') {
-          try { console.log('[UI] RESULT', msg.payload); } catch (e) {}
-          if (!msg.payload || msg.payload.ok === false) {
-            setStatus('Error: ' + JSON.stringify(msg.payload), true);
-          } else {
-            setStatus('Done: ' + JSON.stringify(msg.payload));
-          }
+          const { ok, annotations = [] } = msg.payload || {};
+          const summary = annotations.map(a => {
+            const id = a.frameId || a.frameID || a.id || '?';
+            const n = Array.isArray(a.order) ? a.order.length : 0;
+            return `Frame ${id}: ${n} items`;
+          }).join(' ');
+          if (statusEl) statusEl.textContent = ok
+            ? `Annotation applied ${summary}`
+            : `Server returned not-ok.`;
+        }
+
+        if (msg.type === 'ERROR') {
+          if (statusEl) statusEl.textContent = `Error: ${msg.error || 'unknown'}`;
         }
       };
     </script>
