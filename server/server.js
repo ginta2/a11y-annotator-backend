@@ -170,11 +170,19 @@ function sanitizeOutput(modelOut, validIds, frameId) {
       if (!validIds.has(it.id)) continue;
       if (seen.has(it.id)) continue;
       seen.add(it.id);
-      filtered.push({
+      
+      const item = {
         id: it.id,
         label: String(it.label || 'item'),
         role: it.role ? String(it.role) : undefined,
-      });
+      };
+      
+      // Include position if provided (for vision API responses)
+      if (it.position && typeof it.position.x === 'number' && typeof it.position.y === 'number') {
+        item.position = { x: it.position.x, y: it.position.y };
+      }
+      
+      filtered.push(item);
     }
     return [{ frameId, order: filtered, notes: ann.notes || '' }];
   } catch {
@@ -185,48 +193,89 @@ function sanitizeOutput(modelOut, validIds, frameId) {
 // ---- /annotate endpoint ----
 app.post('/annotate', async (req, res) => {
   try {
-    const { platform, frames } = req.body || {};
+    const { platform, image, frames } = req.body || {};
     if (!Array.isArray(frames) || frames.length === 0) {
       return res.status(400).json({ ok: false, error: 'No frames' });
     }
     const frame = frames[0];
     const tree = frame.tree || { children: frame.children || [] };
 
-    // Build checksum (stable across same structure)
-    const keyRaw = JSON.stringify({ platform, id: frame.id, name: frame.name, box: frame.box, tree });
+    // Build checksum (include image presence in cache key)
+    const keyRaw = JSON.stringify({ platform, hasImage: !!image, id: frame.id, name: frame.name, box: frame.box, tree });
     const checksum = quickHash(keyRaw);
 
     // Cache hit?
     const cached = ANNO_CACHE.get(checksum);
     if (cached) {
+      console.log('[SRV] Cache hit for', frame.id);
       return res.json({ ok: true, checksum, annotations: cached.annotations, notes: 'cacheHit' });
     }
 
     // Valid IDs set for validation
     const validIds = flattenIds(tree);
 
-    // Compose prompts
-    const systemPrompt = SYSTEM_PROMPT_V1;
+    // Platform-aware prompt selection and injection
+    const platformLabel = platform === 'rn' ? 'React Native' : 'Web (ARIA/WCAG)';
+    const hasImage = image && typeof image === 'string' && image.startsWith('data:image');
+    
+    // Select prompt based on image presence
+    const basePrompt = hasImage ? PROMPTS.vision : PROMPTS.text;
+    const systemPrompt = basePrompt ? basePrompt.replace('{PLATFORM}', platformLabel) : SYSTEM_PROMPT_V1;
+    
+    // Select model based on image presence
+    const model = hasImage ? 'gpt-4o' : (process.env.MODEL || 'gpt-4o-mini');
+    
+    console.log(`[SRV] Using ${model} with ${hasImage ? 'vision' : 'text'} prompt for ${platformLabel}`);
 
-    const userPrompt = [
-      `Platform: ${platform || 'web'}`,
-      `Frame: ${frame.name || ''}`,
-      `Tree:`,
-      JSON.stringify(tree, null, 2)
-    ].join('\n');
+    // Build messages array
+    let messages;
+    if (hasImage) {
+      // Vision API format with image
+      messages = [
+        { role: 'system', content: systemPrompt },
+        { 
+          role: 'user', 
+          content: [
+            { 
+              type: 'text', 
+              text: `Platform: ${platformLabel}\nFrame: ${frame.name || ''}\nTree:\n${JSON.stringify(tree, null, 2)}` 
+            },
+            { 
+              type: 'image_url', 
+              image_url: { 
+                url: image,
+                detail: 'high'  // Better quality analysis
+              } 
+            }
+          ]
+        }
+      ];
+    } else {
+      // Text-only format
+      messages = [
+        { role: 'system', content: systemPrompt },
+        { 
+          role: 'user', 
+          content: `Platform: ${platformLabel}\nFrame: ${frame.name || ''}\nTree:\n${JSON.stringify(tree, null, 2)}` 
+        }
+      ];
+    }
 
     let modelOut = null;
     try {
       const completion = await openai.chat.completions.create({
-        model: process.env.MODEL || 'gpt-4o-mini',
+        model,
         temperature: 0.2,
         response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
+        messages,
       });
       modelOut = JSON.parse(completion.choices[0].message.content);
+      
+      // Log token usage and estimated cost
+      const usage = completion.usage;
+      const cost = (usage.prompt_tokens * 0.00001) + (usage.completion_tokens * 0.00003);
+      console.log(`[SRV] Tokens: ${usage.total_tokens}, Est. cost: $${cost.toFixed(4)}`);
+      
     } catch (e) {
       console.error('[SRV] OpenAI error:', e && e.message || e);
     }
