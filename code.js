@@ -232,7 +232,14 @@ async function ensureFont(family, style) {
 
 // Create a little yellow "Focus Order" note inside the frame
 async function renderFocusOrderNote(frame, annotation) {
-  if (!frame || !annotation || !annotation.order || !annotation.order.length) return;
+  console.log('[A11y] renderFocusOrderNote called');
+  
+  if (!frame || !annotation || !annotation.order || !annotation.order.length) {
+    console.warn('[A11y] renderFocusOrderNote: Invalid input');
+    return;
+  }
+
+  console.log('[A11y] Rendering note for', annotation.order.length, 'items');
 
   // Build body lines: 1. label, 2. label, ...
   var lines = [];
@@ -242,6 +249,7 @@ async function renderFocusOrderNote(frame, annotation) {
     lines.push((i + 1) + '. ' + label);
   }
   var body = lines.join('\n');
+  console.log('[A11y] Note body:', body.substring(0, 100) + '...');
 
   // Create a container frame for the note
   var note = figma.createFrame();
@@ -300,6 +308,8 @@ async function renderFocusOrderNote(frame, annotation) {
     note.x = nx;
     note.y = ny;
   }
+  
+  console.log('[A11y] Yellow note rendered successfully at', note.x, note.y);
 }
 
 // Track last checksum for UX feedback
@@ -314,9 +324,25 @@ function computeChecksum(annos) {
 
 // Draw numbered chips at element positions
 async function drawFocusChips(frame, annotation) {
-  if (!frame || !annotation || !annotation.order || !annotation.order.length) return;
+  console.log('[A11y] drawFocusChips called');
+  
+  if (!frame || !annotation || !annotation.order || !annotation.order.length) {
+    console.warn('[A11y] drawFocusChips: Invalid input');
+    return false;
+  }
   
   var order = annotation.order;
+  console.log('[A11y] Drawing chips for', order.length, 'items');
+  
+  // Load fonts upfront
+  try {
+    await ensureFont('Inter', 'Regular');
+    await ensureFont('Inter', 'Bold');
+    console.log('[A11y] Fonts loaded successfully');
+  } catch (e) {
+    console.error('[A11y] Font loading failed:', e && e.message || e);
+  }
+  
   var chipGroup = figma.createFrame();
   chipGroup.name = 'A11y Focus Chips';
   chipGroup.resize(frame.width, frame.height);
@@ -329,20 +355,22 @@ async function drawFocusChips(frame, annotation) {
   // Tag for cleanup
   try { chipGroup.setPluginData(NOTE_TAG, NOTE_TAG_VALUE); } catch (e) {}
   
-  await ensureFont('Inter', 'Bold');
-  
   var chipsDrawn = 0;
+  var itemsWithoutPosition = 0;
+  
   for (var i = 0; i < order.length; i++) {
     var item = order[i];
     var num = i + 1;
     
     // Check if position exists
     if (!item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
-      console.warn('[A11y] No position for item', num, item.label);
+      console.warn('[A11y] Item', num, '(' + item.label + ') missing position:', item.position);
+      itemsWithoutPosition++;
       continue;
     }
     
     var pos = item.position;
+    console.log('[A11y] Drawing chip', num, 'at', pos.x, pos.y, 'for', item.label);
     
     // Red circle
     var chip = figma.createEllipse();
@@ -354,13 +382,19 @@ async function drawFocusChips(frame, annotation) {
     
     // White number text
     var text = figma.createText();
+    
+    // Load and set font BEFORE setting characters
+    try {
+      await figma.loadFontAsync({ family: 'Inter', style: 'Bold' });
+      text.fontName = { family: 'Inter', style: 'Bold' };
+      console.log('[A11y] Font set for chip', num);
+    } catch (e) {
+      console.warn('[A11y] Font load failed for chip', num, ':', e && e.message || e);
+      // Will use default font
+    }
+    
     text.characters = String(num);
     text.fontSize = 18;
-    try {
-      text.fontName = { family: 'Inter', style: 'Bold' };
-    } catch (e) {
-      // Fallback if font fails
-    }
     text.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
     text.textAlignHorizontal = 'CENTER';
     text.textAlignVertical = 'CENTER';
@@ -374,12 +408,15 @@ async function drawFocusChips(frame, annotation) {
     chipsDrawn++;
   }
   
+  console.log('[A11y] Chips drawn:', chipsDrawn, '| Items without position:', itemsWithoutPosition);
+  
   if (chipsDrawn > 0 && frame.parent) {
     frame.parent.appendChild(chipGroup);
-    console.log('[A11y] Drew', chipsDrawn, 'focus chips');
+    console.log('[A11y] Chip group added to canvas');
     return true;
   }
   
+  console.warn('[A11y] No chips were drawn or frame has no parent');
   return false;
 }
 
@@ -387,22 +424,31 @@ async function applyAnnotations(annos) {
   var selection = figma.currentPage.selection[0];
   if (!selection || selection.type !== 'FRAME') return;
 
+  console.log('[A11y] applyAnnotations called with', annos ? annos.length : 0, 'annotation(s)');
+
   // no annotations? clear old note
   if (!annos || !annos.length || !annos[0] || !annos[0].order) {
+    console.warn('[A11y] No valid annotations received');
     removeOldNotes(selection);
     lastChecksum = null;
     figma.notify('A11y: No focusable items found.');
     return;
   }
 
+  console.log('[A11y] Annotation order length:', annos[0].order.length);
+  console.log('[A11y] First 3 items:', annos[0].order.slice(0, 3).map(function(it) {
+    return { id: it.id, label: it.label, hasPos: !!(it.position) };
+  }));
+
   var newChecksum = computeChecksum(annos);
   if (newChecksum && newChecksum === lastChecksum) {
-    // nothing changed – avoid flicker
+    console.log('[A11y] Checksum unchanged, skipping re-render');
     figma.notify('Focus order already up to date');
     return;
   }
 
   // Remove old annotations
+  console.log('[A11y] Removing old notes');
   removeOldNotes(selection);
   
   // Try to draw chips first (if coordinates present)
@@ -410,16 +456,23 @@ async function applyAnnotations(annos) {
     return item.position && typeof item.position.x === 'number';
   });
   
+  console.log('[A11y] Has coordinates:', hasCoordinates);
+  
   if (hasCoordinates) {
-    console.log('[A11y] Drawing numbered chips');
+    console.log('[A11y] Attempting to draw numbered chips');
     var chipsDrawn = await drawFocusChips(selection, annos[0]);
-    if (chipsDrawn) {
-      // Also keep the note for reference
-      await renderFocusOrderNote(selection, annos[0]);
+    console.log('[A11y] Chips drawn result:', chipsDrawn);
+    
+    // Always render note as well for reference
+    console.log('[A11y] Rendering yellow note as reference');
+    await renderFocusOrderNote(selection, annos[0]);
+    
+    if (!chipsDrawn) {
+      figma.notify('A11y: Chips failed, showing note only', { timeout: 3000 });
     }
   } else {
     // Fallback to note only
-    console.log('[A11y] No coordinates, using note only');
+    console.log('[A11y] No coordinates found, rendering note only');
     await renderFocusOrderNote(selection, annos[0]);
   }
 
@@ -563,6 +616,25 @@ async function runPropose({ frames, platform, prompt }) {
     figma.notify('Focus order service unavailable.');
     console.warn('[NET] bad response', res);
     return;
+  }
+
+  // Debug: Log annotation structure
+  if (res.annotations && res.annotations.length > 0) {
+    var firstAnno = res.annotations[0];
+    console.log('[A11y] Received annotation with', firstAnno.order ? firstAnno.order.length : 0, 'items');
+    if (firstAnno.order && firstAnno.order.length > 0) {
+      console.log('[A11y] First 3 items from server:', firstAnno.order.slice(0, 3).map(function(it) {
+        return { 
+          id: it.id, 
+          label: it.label, 
+          role: it.role,
+          hasPosition: !!(it.position),
+          position: it.position
+        };
+      }));
+    }
+  } else {
+    console.warn('[A11y] No annotations in response');
   }
 
   await applyAnnotations(res.annotations);

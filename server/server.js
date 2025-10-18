@@ -276,6 +276,20 @@ app.post('/annotate', async (req, res) => {
       const cost = (usage.prompt_tokens * 0.00001) + (usage.completion_tokens * 0.00003);
       console.log(`[SRV] Tokens: ${usage.total_tokens}, Est. cost: $${cost.toFixed(4)}`);
       
+      // Debug: Log raw model output
+      if (modelOut && modelOut.annotations && modelOut.annotations[0]) {
+        const rawOrder = modelOut.annotations[0].order || [];
+        console.log(`[SRV] Raw model output: ${rawOrder.length} items`);
+        if (rawOrder.length > 0) {
+          console.log(`[SRV] First 3 items from model:`, rawOrder.slice(0, 3).map(it => ({
+            id: it.id,
+            label: it.label,
+            hasPosition: !!(it.position),
+            position: it.position
+          })));
+        }
+      }
+      
     } catch (e) {
       console.error('[SRV] OpenAI error:', e && e.message || e);
     }
@@ -284,6 +298,19 @@ app.post('/annotate', async (req, res) => {
     let annotations = null;
     if (modelOut) {
       annotations = sanitizeOutput(modelOut, validIds || new Set(), frame.id);
+      
+      // Debug: Log sanitized output
+      if (annotations && annotations[0]) {
+        console.log(`[SRV] Sanitized output: ${annotations[0].order.length} items`);
+        if (annotations[0].order.length > 0) {
+          console.log(`[SRV] First 3 sanitized items:`, annotations[0].order.slice(0, 3).map(it => ({
+            id: it.id,
+            label: it.label,
+            hasPosition: !!(it.position),
+            position: it.position
+          })));
+        }
+      }
     }
 
     // Fallback if needed
