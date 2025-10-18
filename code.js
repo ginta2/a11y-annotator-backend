@@ -399,6 +399,28 @@ async function runPropose({ frames, platform, prompt }) {
     platform
   });
 
+  // Export PNG screenshot for vision analysis
+  figma.notify('Capturing screenshot…', { timeout: 1500 });
+  var pngBytes = null;
+  var imageData = null;
+  
+  try {
+    pngBytes = await selection.exportAsync({
+      format: 'PNG',
+      constraint: { type: 'SCALE', value: 2 }  // @2x for better quality
+    });
+    
+    if (pngBytes && pngBytes.length > 0) {
+      imageData = 'data:image/png;base64,' + figma.base64Encode(pngBytes);
+      var sizeKB = (pngBytes.length / 1024).toFixed(1);
+      console.log('[A11y] PNG exported:', sizeKB, 'KB');
+    }
+  } catch (e) {
+    console.warn('[A11y] PNG export failed:', e && e.message || e);
+    figma.notify('Screenshot failed, using text-only analysis', { timeout: 2000 });
+    imageData = null;
+  }
+
   // Serialize (always deep with safety limits)
   const dto = toDTO(selection, platform);
 
@@ -422,6 +444,7 @@ async function runPropose({ frames, platform, prompt }) {
 
   const payload = {
     platform,
+    image: imageData,  // base64-encoded PNG or null
     frames: [{
       id: selection.id,
       name: selection.name,
@@ -431,7 +454,11 @@ async function runPropose({ frames, platform, prompt }) {
     }]
   };
 
-  console.log('[NET] POST /annotate payload', payload);
+  console.log('[NET] POST /annotate', { 
+    platform: payload.platform, 
+    hasImage: (imageData !== null && imageData !== undefined) ? true : false,
+    frameCount: payload.frames.length 
+  });
 
   let res;
   try {
