@@ -312,6 +312,77 @@ function computeChecksum(annos) {
   return JSON.stringify(annotation.order.map(item => ({ id: item.id, label: item.label })));
 }
 
+// Draw numbered chips at element positions
+async function drawFocusChips(frame, annotation) {
+  if (!frame || !annotation || !annotation.order || !annotation.order.length) return;
+  
+  var order = annotation.order;
+  var chipGroup = figma.createFrame();
+  chipGroup.name = 'A11y Focus Chips';
+  chipGroup.resize(frame.width, frame.height);
+  chipGroup.x = frame.x;
+  chipGroup.y = frame.y;
+  chipGroup.fills = [];
+  chipGroup.clipsContent = false;
+  chipGroup.locked = true;
+  
+  // Tag for cleanup
+  try { chipGroup.setPluginData(NOTE_TAG, NOTE_TAG_VALUE); } catch (e) {}
+  
+  await ensureFont('Inter', 'Bold');
+  
+  var chipsDrawn = 0;
+  for (var i = 0; i < order.length; i++) {
+    var item = order[i];
+    var num = i + 1;
+    
+    // Check if position exists
+    if (!item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
+      console.warn('[A11y] No position for item', num, item.label);
+      continue;
+    }
+    
+    var pos = item.position;
+    
+    // Red circle
+    var chip = figma.createEllipse();
+    chip.resize(36, 36);
+    chip.fills = [{ type: 'SOLID', color: { r: 0.91, g: 0.28, b: 0.15 } }]; // #E84827
+    chip.x = pos.x - 18;  // center on position
+    chip.y = pos.y - 18;
+    chip.name = 'Chip ' + num;
+    
+    // White number text
+    var text = figma.createText();
+    text.characters = String(num);
+    text.fontSize = 18;
+    try {
+      text.fontName = { family: 'Inter', style: 'Bold' };
+    } catch (e) {
+      // Fallback if font fails
+    }
+    text.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
+    text.textAlignHorizontal = 'CENTER';
+    text.textAlignVertical = 'CENTER';
+    text.resize(36, 36);
+    text.x = pos.x - 18;
+    text.y = pos.y - 18;
+    text.name = 'Number ' + num;
+    
+    chipGroup.appendChild(chip);
+    chipGroup.appendChild(text);
+    chipsDrawn++;
+  }
+  
+  if (chipsDrawn > 0 && frame.parent) {
+    frame.parent.appendChild(chipGroup);
+    console.log('[A11y] Drew', chipsDrawn, 'focus chips');
+    return true;
+  }
+  
+  return false;
+}
+
 async function applyAnnotations(annos) {
   var selection = figma.currentPage.selection[0];
   if (!selection || selection.type !== 'FRAME') return;
@@ -331,12 +402,29 @@ async function applyAnnotations(annos) {
     return;
   }
 
-  // redraw the note
+  // Remove old annotations
   removeOldNotes(selection);
-  await renderFocusOrderNote(selection, annos[0]);
+  
+  // Try to draw chips first (if coordinates present)
+  var hasCoordinates = annos[0].order.some(function(item) {
+    return item.position && typeof item.position.x === 'number';
+  });
+  
+  if (hasCoordinates) {
+    console.log('[A11y] Drawing numbered chips');
+    var chipsDrawn = await drawFocusChips(selection, annos[0]);
+    if (chipsDrawn) {
+      // Also keep the note for reference
+      await renderFocusOrderNote(selection, annos[0]);
+    }
+  } else {
+    // Fallback to note only
+    console.log('[A11y] No coordinates, using note only');
+    await renderFocusOrderNote(selection, annos[0]);
+  }
 
   lastChecksum = newChecksum;
-  figma.notify('A11y: Annotation received and rendered.');
+  figma.notify('A11y: Annotated ' + annos[0].order.length + ' items');
 }
 
 figma.ui.onmessage = async (msgRaw) => {
