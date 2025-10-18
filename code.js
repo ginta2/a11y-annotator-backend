@@ -337,14 +337,13 @@ async function drawFocusChips(frame, annotation) {
   chipGroup.y = frame.y;
   chipGroup.fills = [];
   chipGroup.clipsContent = false;
-  chipGroup.locked = true;
+  chipGroup.locked = false;  // Allow selection and repositioning
   
   // Tag for cleanup
   try { chipGroup.setPluginData(NOTE_TAG, NOTE_TAG_VALUE); } catch (e) {}
   
   var chipsDrawn = 0;
   var itemsWithoutPosition = 0;
-  var itemsOutOfBounds = 0;
   
   for (var i = 0; i < order.length; i++) {
     var item = order[i];
@@ -357,26 +356,14 @@ async function drawFocusChips(frame, annotation) {
     }
     
     var pos = item.position;
-    
-    // Validate coordinates are within frame bounds
     var chipSize = 36;
-    var offset = -10;  // Slight offset to avoid covering elements
-    var chipX = pos.x + offset;
-    var chipY = pos.y + offset;
-    
-    // Ensure chip is within frame bounds
-    if (chipX < frame.x || chipX + chipSize > frame.x + frame.width || 
-        chipY < frame.y || chipY + chipSize > frame.y + frame.height) {
-      itemsOutOfBounds++;
-      continue;
-    }
     
     // Red circle
     var chip = figma.createEllipse();
     chip.resize(chipSize, chipSize);
     chip.fills = [{ type: 'SOLID', color: { r: 0.91, g: 0.28, b: 0.15 } }]; // #E84827
-    chip.x = chipX - 18;  // center on adjusted position
-    chip.y = chipY - 18;
+    chip.x = pos.x - 18;  // center on position
+    chip.y = pos.y - 18;
     chip.name = 'Chip ' + num;
     
     // White number text
@@ -397,8 +384,8 @@ async function drawFocusChips(frame, annotation) {
     text.textAlignHorizontal = 'CENTER';
     text.textAlignVertical = 'CENTER';
     text.resize(chipSize, chipSize);
-    text.x = chipX - 18;
-    text.y = chipY - 18;
+    text.x = pos.x - 18;
+    text.y = pos.y - 18;
     text.name = 'Number ' + num;
     
     chipGroup.appendChild(chip);
@@ -407,8 +394,8 @@ async function drawFocusChips(frame, annotation) {
   }
   
   // Summary log
-  if (itemsWithoutPosition > 0 || itemsOutOfBounds > 0) {
-    console.warn('[A11y] Skipped items:', itemsWithoutPosition, 'without position,', itemsOutOfBounds, 'out of bounds');
+  if (itemsWithoutPosition > 0) {
+    console.warn('[A11y] Skipped', itemsWithoutPosition, 'items without position data');
   }
   console.log('[A11y] Chips drawn:', chipsDrawn, 'of', order.length);
   
