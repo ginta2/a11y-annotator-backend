@@ -158,53 +158,50 @@ function isFocusableHeuristic(node, platform) {
   return { focusable, role: nameRole };
 }
 
-function toDTO(n, platform) {
-  const { focusable, role } = isFocusableHeuristic(n, platform);
-  const rect = ('absoluteTransform' in n && 'width' in n && 'height' in n)
-    ? { x: (n.x !== null && n.x !== undefined ? n.x : 0), y: (n.y !== null && n.y !== undefined ? n.y : 0), w: (n.width !== null && n.width !== undefined ? n.width : 0), h: (n.height !== null && n.height !== undefined ? n.height : 0) }
+function toDTO(n, platform, depth, counters) {
+  // Defaults for top-level call
+  depth = (depth !== null && depth !== undefined) ? depth : 0;
+  counters = counters || { total: 0 };
+
+  // Safety limits to keep payload bounded
+  if (depth > 10) return null; // stop after 10 levels
+  if (depth > 0 && counters.total >= 500) return null; // cap to ~500 nodes
+
+  counters.total++;
+
+  function num(v, d) { return (v !== null && v !== undefined) ? v : d; }
+
+  var fr = isFocusableHeuristic(n, platform);
+  var role = fr.role;
+  var focusable = fr.focusable;
+
+  var rect = ('absoluteTransform' in n && 'width' in n && 'height' in n)
+    ? { x: num(n.x, 0), y: num(n.y, 0), w: num(n.width, 0), h: num(n.height, 0) }
     : undefined;
 
-  const kids = ('children' in n) ? n.children
-    .filter(c => c.visible !== false)
-    .sort(readingOrder)
-    .map(c => toDTO(c, platform)) : [];
+  var kids = [];
+  if ('children' in n) {
+    var raw = n.children
+      .filter(function(c) { return c.visible !== false; })
+      .sort(readingOrder);
+    for (var i = 0; i < raw.length; i++) {
+      var childDto = toDTO(raw[i], platform, depth + 1, counters);
+      if (childDto) kids.push(childDto);
+      if (counters.total >= 500) break; // hard stop
+    }
+  }
 
   return Object.assign({}, {
+    id: n.id,
     name: n.name,
     type: n.type,
     visible: n.visible !== false,
-    role,
-    focusable
+    role: role,
+    focusable: focusable
   }, rect || {}, kids.length ? { children: kids } : {});
 }
 
-function toDTO_shallow(n, platform) {
-  const children = ('children' in n)
-    ? n.children.filter(c => c.visible !== false).sort(readingOrder).map(c => {
-        const { focusable, role } = isFocusableHeuristic(c, platform);
-        const rect = ('absoluteTransform' in c && 'width' in c && 'height' in c)
-          ? { x: (c.x !== null && c.x !== undefined ? c.x : 0), y: (c.y !== null && c.y !== undefined ? c.y : 0), w: (c.width !== null && c.width !== undefined ? c.width : 0), h: (c.height !== null && c.height !== undefined ? c.height : 0) }
-          : undefined;
-        return Object.assign({}, {
-          name: c.name,
-          type: c.type,
-          visible: c.visible !== false,
-          role,
-          focusable
-        }, rect || {});
-      })
-    : [];
-
-  const rect = ('absoluteTransform' in n && 'width' in n && 'height' in n)
-    ? { x: (n.x !== null && n.x !== undefined ? n.x : 0), y: (n.y !== null && n.y !== undefined ? n.y : 0), w: (n.width !== null && n.width !== undefined ? n.width : 0), h: (n.height !== null && n.height !== undefined ? n.height : 0) }
-    : undefined;
-
-  return Object.assign({}, {
-    name: n.name,
-    type: n.type,
-    visible: n.visible !== false
-  }, rect || {}, { children });
-}
+// (Removed toDTO_shallow) – we always use deep traversal with limits
 
 // Visual annotation rendering
 var NOTE_TAG = 'a11y-note';
@@ -393,24 +390,35 @@ async function runPropose({ frames, platform, prompt }) {
     figma.notify('A11y service is still waking up. Retrying…', { timeout: 3000 });
   }
 
-  // Compute serialization mode (small widget vs larger section)
-  const isSmall =
-    (selection.width * selection.height) < 120000 ||
-    (('children' in selection) && selection.children.filter(c => c.visible !== false).length <= 5);
-
+  // Selection info
   console.log('[A11y] selection', {
     id: selection.id,
     name: selection.name,
     w: selection.width,
     h: selection.height,
-    isSmall,
     platform
   });
 
-  // Serialize
-  const dto = isSmall
-    ? toDTO_shallow(selection, platform) // direct children only
-    : toDTO(selection, platform);        // recursive
+  // Serialize (always deep with safety limits)
+  const dto = toDTO(selection, platform);
+
+  // Debug stats for what we are sending
+  function countNodes(node) {
+    if (!node) return 0;
+    var cnt = 1;
+    var cs = node.children || [];
+    for (var i = 0; i < cs.length; i++) cnt += countNodes(cs[i]);
+    return cnt;
+  }
+  function maxDepth(node) {
+    if (!node) return 0;
+    var cs = node.children || [];
+    var d = 0;
+    for (var i = 0; i < cs.length; i++) d = Math.max(d, maxDepth(cs[i]));
+    return d + (cs.length ? 1 : 0);
+  }
+  var _sample = (dto && dto.children) ? dto.children.slice(0, 3).map(function (c) { return c.name; }) : [];
+  console.log('[A11y] Serialized tree', { nodeCount: countNodes(dto), maxDepth: maxDepth(dto), sampleNodes: _sample });
 
   const payload = {
     platform,

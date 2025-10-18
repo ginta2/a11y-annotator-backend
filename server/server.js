@@ -15,6 +15,48 @@ app.get('/health', (req, res) => res.status(200).send('ok'));
 // ---- OpenAI client ----
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// ---- Prompts (versioned) ----
+// Keep prompts as constants so we can A/B test easily.
+// V1 focuses on nested component traversal guidance.
+const SYSTEM_PROMPT_V1 = `
+You are an accessibility engine (version a11y-v1) that assigns a logical keyboard/touch focus order for a single Figma frame.
+You will receive a JSON tree of nodes (name, type, visible, x, y, w, h, children[]) which may contain nested components.
+
+Return a strict JSON object:
+{
+  "annotations": [
+    {
+      "frameId": string,
+      "order": [ { "id": string, "label": string, "role": string } ],
+      "notes": string
+    }
+  ]
+}
+
+Rules:
+- Always traverse NESTED structures: e.g., BottomNav -> Segment -> TabLabel. Prefer leaf interactive elements over container frames.
+- Include only nodes that should receive focus.
+- Prefer top-to-bottom, then left-to-right order unless strong semantics override (nav, modal, primary CTA).
+- Use ARIA roles when possible (button, link, textbox/input, tab, navigation, main, header, footer).
+- Never invent node IDs; only use IDs present in the input tree.
+- If uncertain, include fewer items rather than guessing and add a short explanation in "notes".
+- Output must be strict JSON matching the schema with no extra prose.
+
+Example (simplified):
+Input tree:
+{
+  "name": "Screen",
+  "children": [
+    { "id": "nav", "name": "Bottom Nav", "children": [
+      { "id": "seg1", "name": "Train", "children": [ { "id": "tab1", "name": "Tab Label" } ] },
+      { "id": "seg2", "name": "Stats" }
+    ]},
+    { "id": "cta", "name": "Start Button" }
+  ]
+}
+Desired order: ["tab1", "seg2", "cta"] with roles ["tab", "tab", "button"].
+`;
+
 // ---- In-memory cache ----
 const ANNO_CACHE = new Map();
 
@@ -125,29 +167,7 @@ app.post('/annotate', async (req, res) => {
     const validIds = flattenIds(tree);
 
     // Compose prompts
-    const systemPrompt = `
-You are an accessibility engine that assigns a logical keyboard/touch focus order for a single Figma frame.
-You will receive a JSON tree of nodes (name, type, visible, x, y, w, h, optional component/variant info, and children).
-Return a JSON object:
-{
-  "annotations": [
-    {
-      "frameId": string,
-      "order": [
-        { "id": string, "label": string, "role": string }
-      ],
-      "notes": string
-    }
-  ]
-}
-Rules:
-- Include only nodes that should receive focus.
-- Prefer top-to-bottom, left-to-right order unless strong semantics (nav, modal, primary CTA) override.
-- Use ARIA/WAI-ARIA roles when possible (button, link, input, tab, navigation, main, header, footer).
-- Never invent node IDs; only use those present in the input tree.
-- If uncertain, include fewer items rather than guessing and add a brief explanation in "notes".
-- Output must be strict JSON matching the schema; do not include prose outside JSON.
-`.trim();
+    const systemPrompt = SYSTEM_PROMPT_V1;
 
     const userPrompt = [
       `Platform: ${platform || 'web'}`,
