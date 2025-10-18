@@ -66,6 +66,59 @@ Check if node tree clearly marks exercise cards vs menu buttons - may need to pa
 
 ---
 
+## ℹ️ Plugin Behavior: Focus Order vs Reading Order
+
+**Date:** 2024-10-18  
+**Status:** Working as intended (documented for user reference)
+
+### What Gets Annotated
+
+The plugin annotates **focusable/interactive elements only** (focus order), not all visible content (reading order).
+
+**✅ Annotated (receives numbered chips):**
+- Buttons
+- Tabs
+- Inputs/text fields
+- Links
+- Toggles/switches
+- Interactive list items/cards
+
+**❌ Not Annotated (semantically exposed but not focusable):**
+- Headings/titles
+- Subtitles/body text
+- Descriptive labels
+- Decorative images
+- Static text content
+
+### Why This Is Correct
+
+**React Native:**
+- `accessible={true}` + `accessibilityRole` defines focusable elements
+- Titles: `accessibilityRole="header"` but **should not receive tab focus**
+- VoiceOver announces headers when focus enters the group they belong to
+
+**WCAG 2.2:**
+- **2.4.3 Focus Order:** Interactive elements must receive focus in a logical sequence
+- **1.3.1 Info and Relationships:** Structural text (like titles/headings) must be programmatically exposed but not necessarily focusable
+
+**Practical Rule:**
+> Only **actionable and navigational** elements receive focus.  
+> **Informational or contextual text** must be exposed semantically but not focusable.
+
+### Future Enhancement (Parking Lot)
+
+**Feature Request:** Add "Reading Order" mode (separate from Focus Order)
+- **Focus Order mode (current):** Interactive elements only (numbered chips)
+- **Reading Order mode (future):** All content including headings/text (different visual treatment)
+- **Use case:** QA testing full screen reader flow vs developer handoff for tab order
+
+**Implementation notes:**
+- Would need separate prompt or mode toggle
+- Different visual styling (e.g., gray labels for non-interactive, red chips for interactive)
+- Useful for comprehensive accessibility audits
+
+---
+
 ## 📋 Future QA Items
 
 ### To Add After Phase 3
