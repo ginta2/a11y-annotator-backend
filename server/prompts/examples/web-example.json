@@ -1,0 +1,114 @@
+{
+  "description": "Web ARIA example - Search and filter interface",
+  "input": {
+    "platform": "web",
+    "image": "data:image/png;base64,...",
+    "frames": [
+      {
+        "id": "web-001",
+        "name": "Search Page",
+        "box": { "x": 0, "y": 0, "w": 1200, "h": 800 },
+        "children": [
+          {
+            "id": "h1",
+            "name": "Products",
+            "type": "TEXT",
+            "x": 40,
+            "y": 40,
+            "w": 300,
+            "h": 48,
+            "role": "heading",
+            "focusable": false
+          },
+          {
+            "id": "search1",
+            "name": "Search products",
+            "type": "FRAME",
+            "x": 40,
+            "y": 100,
+            "w": 400,
+            "h": 44,
+            "role": "search",
+            "focusable": true
+          },
+          {
+            "id": "filter1",
+            "name": "Filter",
+            "type": "FRAME",
+            "x": 460,
+            "y": 100,
+            "w": 120,
+            "h": 44,
+            "role": "button",
+            "focusable": true
+          },
+          {
+            "id": "card1",
+            "name": "Product Card 1",
+            "type": "FRAME",
+            "x": 40,
+            "y": 180,
+            "w": 280,
+            "h": 360,
+            "role": "listitem",
+            "focusable": true
+          },
+          {
+            "id": "link1",
+            "name": "Learn More",
+            "type": "FRAME",
+            "x": 40,
+            "y": 700,
+            "w": 140,
+            "h": 40,
+            "role": "link",
+            "focusable": true
+          }
+        ]
+      }
+    ]
+  },
+  "expectedOutput": {
+    "ok": true,
+    "checksum": "b3c4e5f6",
+    "annotations": [
+      {
+        "frameId": "web-001",
+        "order": [
+          {
+            "id": "h1",
+            "label": "Products",
+            "role": "heading",
+            "position": { "x": 40, "y": 40 }
+          },
+          {
+            "id": "search1",
+            "label": "Search products",
+            "role": "search",
+            "position": { "x": 40, "y": 100 }
+          },
+          {
+            "id": "filter1",
+            "label": "Filter",
+            "role": "button",
+            "position": { "x": 460, "y": 100 }
+          },
+          {
+            "id": "card1",
+            "label": "Product Card 1",
+            "role": "listitem",
+            "position": { "x": 40, "y": 180 }
+          },
+          {
+            "id": "link1",
+            "label": "Learn More",
+            "role": "link",
+            "position": { "x": 40, "y": 700 }
+          }
+        ],
+        "notes": "Web ARIA: heading landmark, search, button, list item, link"
+      }
+    ]
+  }
+}
+

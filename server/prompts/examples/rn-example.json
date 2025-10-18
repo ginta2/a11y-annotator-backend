@@ -1,0 +1,131 @@
+{
+  "description": "React Native example - Workout screen",
+  "input": {
+    "platform": "rn",
+    "image": "data:image/png;base64,...",
+    "frames": [
+      {
+        "id": "412:968",
+        "name": "Home With Workout",
+        "box": { "x": 0, "y": 0, "w": 375, "h": 779 },
+        "children": [
+          {
+            "id": "t1",
+            "name": "Your Workout",
+            "type": "TEXT",
+            "x": 16,
+            "y": 56,
+            "w": 200,
+            "h": 32,
+            "role": "header",
+            "focusable": false
+          },
+          {
+            "id": "b1",
+            "name": "Swap",
+            "type": "FRAME",
+            "x": 320,
+            "y": 56,
+            "w": 55,
+            "h": 32,
+            "role": "button",
+            "focusable": true
+          },
+          {
+            "id": "list1",
+            "name": "Exercise 1 Card",
+            "type": "FRAME",
+            "x": 16,
+            "y": 120,
+            "w": 343,
+            "h": 96,
+            "role": "button",
+            "focusable": true
+          },
+          {
+            "id": "tab1",
+            "name": "Train",
+            "type": "FRAME",
+            "x": 24,
+            "y": 700,
+            "w": 80,
+            "h": 48,
+            "role": "tab",
+            "focusable": true
+          },
+          {
+            "id": "tab2",
+            "name": "Stats",
+            "type": "FRAME",
+            "x": 132,
+            "y": 700,
+            "w": 80,
+            "h": 48,
+            "role": "tab",
+            "focusable": true
+          },
+          {
+            "id": "cta1",
+            "name": "Start",
+            "type": "FRAME",
+            "x": 263,
+            "y": 700,
+            "w": 96,
+            "h": 48,
+            "role": "button",
+            "focusable": true
+          }
+        ]
+      }
+    ]
+  },
+  "expectedOutput": {
+    "ok": true,
+    "checksum": "a4d9de5a",
+    "annotations": [
+      {
+        "frameId": "412:968",
+        "order": [
+          {
+            "id": "t1",
+            "label": "Your Workout",
+            "role": "header",
+            "position": { "x": 16, "y": 56 }
+          },
+          {
+            "id": "b1",
+            "label": "Swap",
+            "role": "button",
+            "position": { "x": 320, "y": 56 }
+          },
+          {
+            "id": "list1",
+            "label": "Exercise 1 Card",
+            "role": "button",
+            "position": { "x": 16, "y": 120 }
+          },
+          {
+            "id": "tab1",
+            "label": "Train",
+            "role": "tab",
+            "position": { "x": 24, "y": 700 }
+          },
+          {
+            "id": "tab2",
+            "label": "Stats",
+            "role": "tab",
+            "position": { "x": 132, "y": 700 }
+          },
+          {
+            "id": "cta1",
+            "label": "Start",
+            "role": "button",
+            "position": { "x": 263, "y": 700 }
+          }
+        ],
+        "notes": "React Native: header first, bottom nav last"
+      }
+    ]
+  }
+}
+

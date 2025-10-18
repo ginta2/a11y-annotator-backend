@@ -2,8 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import OpenAI from 'openai';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const app = express();
+
+// ES module __dirname equivalent
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // CORS + body parsing
 app.use(cors({ origin: '*', methods: ['GET','POST','OPTIONS'] }));
@@ -14,6 +21,38 @@ app.get('/health', (req, res) => res.status(200).send('ok'));
 
 // ---- OpenAI client ----
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ---- Prompt loading from files ----
+function loadPrompt(filename) {
+  try {
+    const promptPath = path.join(__dirname, 'prompts', filename);
+    const content = fs.readFileSync(promptPath, 'utf-8');
+    
+    // Extract prompt section (between "## System Prompt" and next "---")
+    const match = content.match(/## System Prompt\s+([\s\S]*?)\n---/);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+    
+    // Fallback: return everything after System Prompt header
+    const fallback = content.split('## System Prompt')[1];
+    return fallback ? fallback.trim() : content;
+  } catch (e) {
+    console.error(`[SRV] Failed to load prompt ${filename}:`, e.message);
+    return null;
+  }
+}
+
+// Load prompts from markdown files
+const PROMPTS = {
+  vision: loadPrompt('vision-v1.md'),
+  text: loadPrompt('text-v1.md')
+};
+
+console.log('[SRV] Prompts loaded:', {
+  vision: PROMPTS.vision ? 'OK' : 'FAILED',
+  text: PROMPTS.text ? 'OK' : 'FAILED'
+});
 
 // ---- Prompts (versioned) ----
 // Keep prompts as constants so we can A/B test easily.
