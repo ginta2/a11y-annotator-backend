@@ -177,10 +177,8 @@ function sanitizeOutput(modelOut, validIds, frameId) {
         role: it.role ? String(it.role) : undefined,
       };
       
-      // Include position if provided (for vision API responses)
-      if (it.position && typeof it.position.x === 'number' && typeof it.position.y === 'number') {
-        item.position = { x: it.position.x, y: it.position.y };
-      }
+      // Don't send Vision coordinates - client will use Figma node coordinates for accuracy
+      // Vision coordinates are often inaccurate for small/low-contrast elements
       
       filtered.push(item);
     }

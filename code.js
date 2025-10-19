@@ -348,22 +348,39 @@ async function drawFocusChips(frame, annotation) {
   for (var i = 0; i < order.length; i++) {
     var item = order[i];
     var num = i + 1;
+    var chipSize = 36;
     
-    // Check if position exists
-    if (!item.position || typeof item.position.x !== 'number' || typeof item.position.y !== 'number') {
+    // Hybrid approach: Use Figma node coordinates for accuracy
+    var node = figma.getNodeById(item.id);
+    var chipX;
+    var chipY;
+    var coordSource = 'unknown';
+    
+    if (node && 'absoluteBoundingBox' in node) {
+      // Use Figma's actual coordinates - pixel perfect!
+      var bounds = node.absoluteBoundingBox;
+      if (bounds) {
+        chipX = bounds.x + (bounds.width / 2);   // Center of element
+        chipY = bounds.y + (bounds.height / 2);
+        coordSource = 'figma';
+      }
+    }
+    
+    // If no Figma coordinates available, skip this item
+    if (coordSource === 'unknown') {
+      console.warn('[A11y] No coordinates for item', num, '(' + item.label + ') - node not found or no bounds');
       itemsWithoutPosition++;
       continue;
     }
     
-    var pos = item.position;
-    var chipSize = 36;
+    console.log('[A11y] Chip', num, 'at', Math.round(chipX), Math.round(chipY), '(from ' + coordSource + '):', item.label);
     
     // Red circle
     var chip = figma.createEllipse();
     chip.resize(chipSize, chipSize);
     chip.fills = [{ type: 'SOLID', color: { r: 0.91, g: 0.28, b: 0.15 } }]; // #E84827
-    chip.x = pos.x - 18;  // center on position
-    chip.y = pos.y - 18;
+    chip.x = chipX - 18;  // center on position
+    chip.y = chipY - 18;
     chip.name = 'Chip ' + num;
     
     // White number text
@@ -384,8 +401,8 @@ async function drawFocusChips(frame, annotation) {
     text.textAlignHorizontal = 'CENTER';
     text.textAlignVertical = 'CENTER';
     text.resize(chipSize, chipSize);
-    text.x = pos.x - 18;
-    text.y = pos.y - 18;
+    text.x = chipX - 18;
+    text.y = chipY - 18;
     text.name = 'Number ' + num;
     
     chipGroup.appendChild(chip);
