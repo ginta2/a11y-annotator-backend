@@ -612,6 +612,35 @@ figma.ui.onmessage = async (msgRaw) => {
   });
 };
 
+// Extract only focusable items from tree (flat list for AI ordering)
+function extractFocusableItems(node, result) {
+  result = result || [];
+  
+  // If this node is focusable, add it to the list
+  if (node && node.focusable) {
+    result.push({
+      id: node.id,
+      name: node.name,
+      role: node.role,
+      inference: node.inference,
+      parentName: node.parentName,
+      x: node.x,
+      y: node.y,
+      w: node.w,
+      h: node.h
+    });
+  }
+  
+  // Recursively check children
+  if (node && node.children && Array.isArray(node.children)) {
+    for (var i = 0; i < node.children.length; i++) {
+      extractFocusableItems(node.children[i], result);
+    }
+  }
+  
+  return result;
+}
+
 async function runPropose({ frames, platform, prompt }) {
   const selection = figma.currentPage.selection[0];
 
@@ -680,22 +709,28 @@ async function runPropose({ frames, platform, prompt }) {
   var _sample = (dto && dto.children) ? dto.children.slice(0, 3).map(function (c) { return c.name; }) : [];
   console.log('[A11y] Serialized tree', { nodeCount: countNodes(dto), maxDepth: maxDepth(dto), sampleNodes: _sample });
 
+  // Extract focusable items as flat list (AI will order them, not filter them)
+  const focusableItems = extractFocusableItems(dto);
+  console.log('[A11y] Extracted', focusableItems.length, 'focusable items for AI ordering');
+  
+  if (focusableItems.length === 0) {
+    figma.notify('No focusable elements found in this frame.');
+    return;
+  }
+
   const payload = {
     platform,
     image: imageData,  // base64-encoded PNG or null
-    frames: [{
-      id: selection.id,
-      name: selection.name,
-      box: { x: selection.x, y: selection.y, w: selection.width, h: selection.height },
-      // For server simplicity, pass children only (server knows it's a frame)
-      children: dto.children || []
-    }]
+    frameId: selection.id,
+    frameName: selection.name,
+    frameBox: { x: selection.x, y: selection.y, w: selection.width, h: selection.height },
+    focusableItems: focusableItems  // Flat list - AI orders these, doesn't filter
   };
 
   console.log('[NET] POST /annotate', { 
     platform: payload.platform, 
     hasImage: (imageData !== null && imageData !== undefined) ? true : false,
-    frameCount: payload.frames.length 
+    focusableCount: focusableItems.length 
   });
 
   // Show analyzing status

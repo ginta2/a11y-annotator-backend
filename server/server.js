@@ -191,26 +191,27 @@ function sanitizeOutput(modelOut, validIds, frameId) {
 // ---- /annotate endpoint ----
 app.post('/annotate', async (req, res) => {
   try {
-    const { platform, image, frames } = req.body || {};
-    if (!Array.isArray(frames) || frames.length === 0) {
-      return res.status(400).json({ ok: false, error: 'No frames' });
+    const { platform, image, frameId, frameName, frameBox, focusableItems } = req.body || {};
+    
+    if (!Array.isArray(focusableItems) || focusableItems.length === 0) {
+      return res.status(400).json({ ok: false, error: 'No focusable items provided' });
     }
-    const frame = frames[0];
-    const tree = frame.tree || { children: frame.children || [] };
+    
+    console.log(`[SRV] Received ${focusableItems.length} focusable items for ordering`);
 
     // Build checksum (include image presence in cache key)
-    const keyRaw = JSON.stringify({ platform, hasImage: !!image, id: frame.id, name: frame.name, box: frame.box, tree });
+    const keyRaw = JSON.stringify({ platform, hasImage: !!image, frameId, frameName, frameBox, focusableItems });
     const checksum = quickHash(keyRaw);
 
     // Cache hit?
     const cached = ANNO_CACHE.get(checksum);
     if (cached) {
-      console.log('[SRV] Cache hit for', frame.id);
+      console.log('[SRV] Cache hit for', frameId);
       return res.json({ ok: true, checksum, annotations: cached.annotations, notes: 'cacheHit' });
     }
 
-    // Valid IDs set for validation
-    const validIds = flattenIds(tree);
+    // Valid IDs set for validation (all focusable item IDs)
+    const validIds = new Set(focusableItems.map(item => item.id));
 
     // Platform-aware prompt selection and injection
     const platformLabel = platform === 'rn' ? 'React Native' : 'Web (ARIA/WCAG)';
@@ -236,7 +237,7 @@ app.post('/annotate', async (req, res) => {
           content: [
             { 
               type: 'text', 
-              text: `Platform: ${platformLabel}\nFrame: ${frame.name || ''}\nTree:\n${JSON.stringify(tree, null, 2)}` 
+              text: `Platform: ${platformLabel}\nFrame: ${frameName || ''}\n\nFocusable Items (${focusableItems.length} total - ALL must be included in output):\n${JSON.stringify(focusableItems, null, 2)}` 
             },
             { 
               type: 'image_url', 
@@ -254,7 +255,7 @@ app.post('/annotate', async (req, res) => {
         { role: 'system', content: systemPrompt },
         { 
           role: 'user', 
-          content: `Platform: ${platformLabel}\nFrame: ${frame.name || ''}\nTree:\n${JSON.stringify(tree, null, 2)}` 
+          content: `Platform: ${platformLabel}\nFrame: ${frameName || ''}\n\nFocusable Items (${focusableItems.length} total - ALL must be included in output):\n${JSON.stringify(focusableItems, null, 2)}` 
         }
       ];
     }
@@ -281,15 +282,45 @@ app.post('/annotate', async (req, res) => {
     // Validate & sanitize
     let annotations = null;
     if (modelOut) {
-      annotations = sanitizeOutput(modelOut, validIds || new Set(), frame.id);
+      annotations = sanitizeOutput(modelOut, validIds || new Set(), frameId);
       if (annotations && annotations[0]) {
-        console.log(`[SRV] Returned ${annotations[0].order.length} focusable items`);
+        const returnedCount = annotations[0].order.length;
+        console.log(`[SRV] AI returned ${returnedCount} of ${focusableItems.length} items`);
+        
+        // Validate completeness - AI should return ALL focusable items
+        if (returnedCount < focusableItems.length) {
+          console.warn(`[SRV] AI missed ${focusableItems.length - returnedCount} items! Adding them.`);
+          
+          // Find missing items
+          const returnedIds = new Set(annotations[0].order.map(item => item.id));
+          const missingItems = focusableItems.filter(item => !returnedIds.has(item.id));
+          
+          // Add missing items at the end with their original data
+          missingItems.forEach(item => {
+            annotations[0].order.push({
+              id: item.id,
+              label: item.name || 'Unknown',
+              role: item.role || 'button'
+            });
+          });
+          
+          console.log(`[SRV] Added ${missingItems.length} missing items to complete the list`);
+        }
       }
     }
 
-    // Fallback if needed
+    // Fallback if needed (create simple heuristic order from focusableItems)
     if (!annotations || !annotations[0] || !annotations[0].order || annotations[0].order.length === 0) {
-      annotations = heuristicFallback({ id: frame.id, tree });
+      console.log('[SRV] Using heuristic fallback');
+      annotations = [{
+        frameId: frameId,
+        order: focusableItems.map((item, idx) => ({
+          id: item.id,
+          label: item.name || `Item ${idx + 1}`,
+          role: item.role || 'button'
+        })),
+        notes: 'heuristic-fallback'
+      }];
     }
 
     // Cache and return
