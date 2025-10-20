@@ -138,9 +138,11 @@ Deep traversal didn't respect semantic boundaries of interactive components. The
 ### Solution Implemented
 
 **1. Client-side (code.js):**
-- Added semantic boundary detection in `toDTO()` function
-- Stops traversal at Input/Button/Tab/Switch/Checkbox/Radio/Slider components
-- Also stops at Figma INSTANCE and COMPONENT nodes (design system components)
+- Added structure-based semantic boundary detection in `toDTO()` function
+- Uses `hasOnlyStaticChildren()` helper to check child types
+- Stops traversal at INSTANCE/COMPONENT nodes that contain only static children (TEXT, shapes)
+- Traverses containers with interactive children (e.g., "Button Group" with buttons inside)
+- Screen-agnostic approach - works for any component structure
 - Logs "Semantic boundary" for debugging
 
 **2. Server-side (server/prompts/vision-v1.md):**

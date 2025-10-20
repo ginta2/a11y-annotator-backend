@@ -179,26 +179,34 @@ function toDTO(n, platform, depth, counters) {
     ? { x: num(n.x, 0), y: num(n.y, 0), w: num(n.width, 0), h: num(n.height, 0) }
     : undefined;
 
-  // Semantic boundary detection: Stop traversing into interactive components
-  var SEMANTIC_BOUNDARIES = [
-    'input', 'textfield', 'text input', 'text field',
-    'button', 'btn',
-    'tab', 'tab item',
-    'switch', 'toggle',
-    'checkbox', 'radio',
-    'slider', 'adjustable'
-  ];
+  // Semantic boundary detection: Stop at leaf components (components with only static children)
+  // This is screen-agnostic - works for any component structure
+  function hasOnlyStaticChildren(node) {
+    if (!node.children || node.children.length === 0) return true;
+    
+    // Static types: text, shapes, etc. (non-interactive elements)
+    var STATIC_TYPES = ['TEXT', 'RECTANGLE', 'ELLIPSE', 'POLYGON', 'STAR', 'VECTOR', 'LINE', 'GROUP'];
+    
+    for (var i = 0; i < node.children.length; i++) {
+      var child = node.children[i];
+      if (child.visible === false) continue; // Skip hidden children
+      
+      var childType = child.type;
+      if (STATIC_TYPES.indexOf(childType) === -1) {
+        // Found a non-static child (FRAME, INSTANCE, COMPONENT, etc.)
+        return false;
+      }
+    }
+    return true; // All visible children are static (text, shapes)
+  }
 
-  var nameLower = n.name.toLowerCase();
-  var isSemanticBoundary = SEMANTIC_BOUNDARIES.some(function(boundary) {
-    return nameLower.indexOf(boundary) !== -1;
-  });
-
-  // Also check if this is a Figma component instance (likely a semantic unit)
+  // Check if this is a component instance (INSTANCE or COMPONENT type)
   var isComponentInstance = n.type === 'INSTANCE' || n.type === 'COMPONENT';
-
-  // If semantic boundary or component, don't traverse children deeply
-  var shouldStopTraversal = isSemanticBoundary || (isComponentInstance && depth > 0);
+  
+  // Only stop traversal if it's a component with only static children
+  // This allows "Button Group" to traverse (has INSTANCE children)
+  // But stops "Button Primary" (only has TEXT children)
+  var shouldStopTraversal = isComponentInstance && hasOnlyStaticChildren(n);
 
   var kids = [];
   if (shouldStopTraversal) {
