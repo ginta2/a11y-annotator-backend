@@ -373,14 +373,18 @@ async function drawFocusChips(frame, annotation) {
       continue;
     }
     
-    console.log('[A11y] Chip', num, 'at', Math.round(chipX), Math.round(chipY), '(from ' + coordSource + '):', item.label);
+    // Convert absolute coordinates to frame-relative
+    var relativeX = chipX - frame.x - (chipSize / 2);  // Center the chip on the element
+    var relativeY = chipY - frame.y - (chipSize / 2);
+    
+    console.log('[A11y] Chip', num, 'at frame-relative', Math.round(relativeX), Math.round(relativeY), '(from ' + coordSource + '):', item.label);
     
     // Red circle
     var chip = figma.createEllipse();
     chip.resize(chipSize, chipSize);
     chip.fills = [{ type: 'SOLID', color: { r: 0.91, g: 0.28, b: 0.15 } }]; // #E84827
-    chip.x = chipX - 18;  // center on position
-    chip.y = chipY - 18;
+    chip.x = relativeX;
+    chip.y = relativeY;
     chip.name = 'Chip ' + num;
     
     // White number text
@@ -401,8 +405,8 @@ async function drawFocusChips(frame, annotation) {
     text.textAlignHorizontal = 'CENTER';
     text.textAlignVertical = 'CENTER';
     text.resize(chipSize, chipSize);
-    text.x = chipX - 18;
-    text.y = chipY - 18;
+    text.x = relativeX;  // Same position as chip (text will auto-center due to alignment)
+    text.y = relativeY;
     text.name = 'Number ' + num;
     
     chipGroup.appendChild(chip);
