@@ -254,12 +254,10 @@ function toDTO(n, platform, depth, counters, parent) {
   // But stops "Button Primary" (only has TEXT children)
   var shouldStopTraversal = isComponentInstance && hasOnlyStaticChildren(n);
 
-  // Infer component type for generic names (helps AI match poorly-named components)
+  // Infer component type for ALL leaf components (helps AI with matching and labeling)
   var inference = null;
-  var nameLower = n.name.toLowerCase();
-  var isGenericName = nameLower.indexOf('frame') !== -1 || nameLower === 'div' || nameLower.indexOf('group') !== -1;
   
-  if (isComponentInstance && isGenericName && shouldStopTraversal) {
+  if (isComponentInstance && shouldStopTraversal) {
     inference = inferComponentType(n, platform);
     if (inference) {
       console.log('[A11y] Inferred type for', n.name + ':', inference.hint, '(text:', inference.text + ')');
