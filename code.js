@@ -158,10 +158,56 @@ function isFocusableHeuristic(node, platform) {
   return { focusable, role: nameRole };
 }
 
-function toDTO(n, platform, depth, counters) {
+// Helper: Infer component type from structure (for generic names like "Frame 24")
+function inferComponentType(node, platform) {
+  if (!node.children || node.children.length === 0) return null;
+  
+  var hasTextChild = false;
+  var textContent = '';
+  
+  // Extract text content from children
+  for (var i = 0; i < node.children.length; i++) {
+    var child = node.children[i];
+    if (child.type === 'TEXT' && child.characters) {
+      hasTextChild = true;
+      textContent = textContent + (textContent ? ' ' : '') + child.characters;
+    }
+  }
+  
+  if (!hasTextChild) return null;
+  
+  // Heuristics based on dimensions and aspect ratio
+  var bounds = node.absoluteBoundingBox;
+  if (!bounds) return null;
+  
+  var aspectRatio = bounds.width / bounds.height;
+  
+  // Input field: wide aspect ratio, moderate height
+  if (aspectRatio > 2.5 && bounds.height > 20 && bounds.height < 80) {
+    return {
+      rnRole: platform === 'rn' ? 'textfield' : 'textbox',
+      hint: 'probable input',
+      text: textContent.substring(0, 50) // Limit text length
+    };
+  }
+  
+  // Button: roughly compact, has text
+  if (aspectRatio < 4 && bounds.height > 30 && bounds.height < 80) {
+    return {
+      rnRole: 'button',
+      hint: 'probable button',
+      text: textContent.substring(0, 50)
+    };
+  }
+  
+  return null;
+}
+
+function toDTO(n, platform, depth, counters, parent) {
   // Defaults for top-level call
   depth = (depth !== null && depth !== undefined) ? depth : 0;
   counters = counters || { total: 0 };
+  parent = parent || null;
 
   // Safety limits to keep payload bounded
   if (depth > 10) return null; // stop after 10 levels
@@ -208,6 +254,18 @@ function toDTO(n, platform, depth, counters) {
   // But stops "Button Primary" (only has TEXT children)
   var shouldStopTraversal = isComponentInstance && hasOnlyStaticChildren(n);
 
+  // Infer component type for generic names (helps AI match poorly-named components)
+  var inference = null;
+  var nameLower = n.name.toLowerCase();
+  var isGenericName = nameLower.indexOf('frame') !== -1 || nameLower === 'div' || nameLower.indexOf('group') !== -1;
+  
+  if (isComponentInstance && isGenericName && shouldStopTraversal) {
+    inference = inferComponentType(n, platform);
+    if (inference) {
+      console.log('[A11y] Inferred type for', n.name + ':', inference.hint, '(text:', inference.text + ')');
+    }
+  }
+
   var kids = [];
   if (shouldStopTraversal) {
     console.log('[A11y] Semantic boundary:', n.name, '(type:', n.type + ') - stopping traversal');
@@ -219,20 +277,33 @@ function toDTO(n, platform, depth, counters) {
       .filter(function(c) { return c.visible !== false; })
       .sort(readingOrder);
     for (var i = 0; i < raw.length; i++) {
-      var childDto = toDTO(raw[i], platform, depth + 1, counters);
+      var childDto = toDTO(raw[i], platform, depth + 1, counters, n); // Pass parent
       if (childDto) kids.push(childDto);
       if (counters.total >= 500) break; // hard stop
     }
   }
 
-  return Object.assign({}, {
+  // Build base object
+  var base = {
     id: n.id,
     name: n.name,
     type: n.type,
     visible: n.visible !== false,
     role: role,
     focusable: focusable
-  }, rect || {}, kids.length ? { children: kids } : {});
+  };
+  
+  // Add parent context (helps disambiguate duplicates)
+  if (parent && parent.name) {
+    base.parentName = parent.name;
+  }
+  
+  // Add inference if available
+  if (inference) {
+    base.inference = inference;
+  }
+  
+  return Object.assign({}, base, rect || {}, kids.length ? { children: kids } : {});
 }
 
 // (Removed toDTO_shallow) – we always use deep traversal with limits
@@ -490,7 +561,22 @@ async function applyAnnotations(annos) {
   }
 
   lastChecksum = newChecksum;
-  figma.notify('A11y: Annotated ' + annos[0].order.length + ' items');
+  
+  // Check for generic component names and warn user
+  var genericNames = [];
+  for (var i = 0; i < annos[0].order.length; i++) {
+    var item = annos[0].order[i];
+    var labelLower = item.label.toLowerCase();
+    if (labelLower.indexOf('frame') !== -1 || labelLower === 'div' || labelLower.indexOf('group') !== -1) {
+      genericNames.push(item.label);
+    }
+  }
+  
+  if (genericNames.length > 3) {
+    figma.notify('⚠️ ' + genericNames.length + ' components have generic names. Rename for better accessibility documentation.', { timeout: 5000 });
+  } else {
+    figma.notify('A11y: Annotated ' + annos[0].order.length + ' items');
+  }
 }
 
 figma.ui.onmessage = async (msgRaw) => {

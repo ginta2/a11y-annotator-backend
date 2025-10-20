@@ -93,6 +93,35 @@ SMART LABELING:
 - For buttons with interior text: Use text as label ("Submit" text → "Submit Button")
 - Always output human-readable labels in the focus order
 
+HANDLING INFERENCE HINTS (for generic names):
+When a tree node has generic name + inference hints, use them for matching and labeling:
+
+Tree node example with inference:
+{
+  "id": "124",
+  "name": "Frame 24",
+  "type": "INSTANCE",
+  "parentName": "Set Row 2",
+  "inference": {
+    "rnRole": "textfield",
+    "hint": "probable input",
+    "text": "50"
+  },
+  "x": 200, "y": 150, "w": 120, "h": 40
+}
+
+How to use inference:
+1. Match visual element to tree using position, dimensions, and inference.text
+2. Use inference.rnRole as the accessibility role (textfield, button, etc.)
+3. Generate smart label combining: parent context + inference.hint + text value
+   - Example: "Frame 24" → "Reps Input (value: 50)" based on parent "Set Row 2"
+4. Always prefer proper names when available; use inference only for generic names
+
+DISAMBIGUATION WITH PARENT CONTEXT:
+- "Frame 24" (parent: "Set Row 1") → "Reps Input (Row 1)"
+- "Frame 24" (parent: "Set Row 2") → "Reps Input (Row 2)"
+- "Frame 25" (parent: "Set Row 1") → "Weight Input (Row 1)"
+
 EXAMPLE (Web):
 Platform: web
 Input: Screenshot with "Search" field, "Filter" button, "Learn More" link
@@ -133,6 +162,7 @@ Output:
 
 ## Version History
 
+- **v1.2** (2024-10-20): Added inference hints handling, parent context disambiguation
 - **v1.1** (2024-10-20): Added complete React Native roles, semantic grouping rules, and smart labeling
 - **v1** (2024-10-18): Initial platform-aware prompt with Web/React Native rules
 
