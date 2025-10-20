@@ -137,10 +137,17 @@ function guessRoleFromName(name) {
   if (/\b(tab|pill|segment)\b/.test(n)) return 'tab';
   if (/\b(menu|nav|navigation)\b/.test(n)) return 'navigation';
   if (/\b(header|hero|app bar|top nav)\b/.test(n)) return 'landmark';
+  // Icon buttons (close, dismiss, X, etc.)
+  if (/^(close|dismiss|x|×|icon)$/i.test(n)) return 'button';
   return undefined;
 }
 
 function isFocusableHeuristic(node, platform) {
+  // TEXT nodes are never independently focusable (they're content within focusable elements)
+  if (node.type === 'TEXT') {
+    return { focusable: false, role: undefined };
+  }
+  
   const nameRole = guessRoleFromName(node.name || '');
   let focusable = Boolean(nameRole);
   
@@ -441,6 +448,7 @@ async function drawFocusChips(frame, annotation) {
   
   var chipsDrawn = 0;
   var itemsWithoutPosition = 0;
+  var previousChips = [];  // Track chip positions to prevent overlap
   
   for (var i = 0; i < order.length; i++) {
     var item = order[i];
@@ -473,6 +481,38 @@ async function drawFocusChips(frame, annotation) {
     // Convert absolute coordinates to frame-relative
     var relativeX = chipX - frame.x - (chipSize / 2);  // Center the chip on the element
     var relativeY = chipY - frame.y - (chipSize / 2);
+    
+    // Smart placement: Offset if too close to previous chips
+    var minDistance = chipSize + 10;  // Minimum 10px gap between chips
+    var maxAttempts = 5;
+    var attempt = 0;
+    
+    while (attempt < maxAttempts) {
+      var tooClose = false;
+      for (var j = 0; j < previousChips.length; j++) {
+        var prev = previousChips[j];
+        var dx = relativeX - prev.x;
+        var dy = relativeY - prev.y;
+        var distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance < minDistance) {
+          tooClose = true;
+          break;
+        }
+      }
+      
+      if (!tooClose) {
+        break;  // Found a good position
+      }
+      
+      // Try offsetting downward and slightly right
+      relativeY += 8;
+      relativeX += 4;
+      attempt++;
+    }
+    
+    // Store this chip position for future collision detection
+    previousChips.push({ x: relativeX, y: relativeY });
     
     console.log('[A11y] Chip', num, 'at frame-relative', Math.round(relativeX), Math.round(relativeY), '(from ' + coordSource + '):', item.label);
     
