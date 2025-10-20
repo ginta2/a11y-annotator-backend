@@ -179,8 +179,34 @@ function toDTO(n, platform, depth, counters) {
     ? { x: num(n.x, 0), y: num(n.y, 0), w: num(n.width, 0), h: num(n.height, 0) }
     : undefined;
 
+  // Semantic boundary detection: Stop traversing into interactive components
+  var SEMANTIC_BOUNDARIES = [
+    'input', 'textfield', 'text input', 'text field',
+    'button', 'btn',
+    'tab', 'tab item',
+    'switch', 'toggle',
+    'checkbox', 'radio',
+    'slider', 'adjustable'
+  ];
+
+  var nameLower = n.name.toLowerCase();
+  var isSemanticBoundary = SEMANTIC_BOUNDARIES.some(function(boundary) {
+    return nameLower.indexOf(boundary) !== -1;
+  });
+
+  // Also check if this is a Figma component instance (likely a semantic unit)
+  var isComponentInstance = n.type === 'INSTANCE' || n.type === 'COMPONENT';
+
+  // If semantic boundary or component, don't traverse children deeply
+  var shouldStopTraversal = isSemanticBoundary || (isComponentInstance && depth > 0);
+
   var kids = [];
-  if ('children' in n) {
+  if (shouldStopTraversal) {
+    console.log('[A11y] Semantic boundary:', n.name, '(type:', n.type + ') - stopping traversal');
+    // Don't include children in serialization
+    kids = [];
+  } else if ('children' in n) {
+    // Normal traversal for containers
     var raw = n.children
       .filter(function(c) { return c.visible !== false; })
       .sort(readingOrder);

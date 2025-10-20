@@ -119,6 +119,49 @@ The plugin annotates **focusable/interactive elements only** (focus order), not 
 
 ---
 
+## ✅ RESOLVED: Input Over-Traversal (2024-10-20)
+
+**Status:** Fixed  
+**Phase:** Semantic Boundary Detection
+
+### Issue
+Plugin was creating multiple focus stops for single components (e.g., "Input" + "50" text inside should be one focus stop, not two).
+
+**Example:**
+- "Reps Input" containing "50" text node
+- **Wrong:** Focus order showed TWO items (#6: Input, #7: 50)
+- **Correct:** Focus order should show ONE item (#6: Reps Input)
+
+### Root Cause
+Deep traversal didn't respect semantic boundaries of interactive components. The `toDTO()` function was recursively serializing ALL children, including text nodes inside inputs, buttons, and tabs.
+
+### Solution Implemented
+
+**1. Client-side (code.js):**
+- Added semantic boundary detection in `toDTO()` function
+- Stops traversal at Input/Button/Tab/Switch/Checkbox/Radio/Slider components
+- Also stops at Figma INSTANCE and COMPONENT nodes (design system components)
+- Logs "Semantic boundary" for debugging
+
+**2. Server-side (server/prompts/vision-v1.md):**
+- Enhanced with complete React Native roles (textfield, search, adjustable, alert, progressbar, timer, menu, toolbar, togglebutton, combobox, spinbutton, grid, summary, keyboardkey, scrollbar)
+- Added SEMANTIC GROUPING RULES section explaining one component = one focus stop
+- Added SMART LABELING section for generic component name inference (e.g., "Frame 24" → "Reps Input")
+
+### Result
+✅ Single interactive component = single focus stop  
+✅ Reduced payload size (fewer nodes sent to API)  
+✅ Better AI accuracy (clearer semantic units)  
+✅ Smart labeling for poorly-named components
+
+### Testing Verified
+- ✅ "Reps Input" with "50" creates ONE focus stop
+- ✅ Buttons with interior text create ONE focus stop
+- ✅ Component instances stop traversal properly
+- ✅ Console logs show "Semantic boundary" messages
+
+---
+
 ## 📋 Future QA Items
 
 ### To Add After Phase 3
@@ -128,6 +171,6 @@ The plugin annotates **focusable/interactive elements only** (focus order), not 
 
 ---
 
-**Last Updated:** 2024-10-18  
+**Last Updated:** 2024-10-20  
 **Next Review:** After Phase 3 implementation
 

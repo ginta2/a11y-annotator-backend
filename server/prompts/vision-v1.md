@@ -43,13 +43,25 @@ Web (ARIA/WCAG):
 - heading (h1-h6), img, list, listitem
 
 React Native (iOS/Android):
-- button, link, text (staticText for labels)
-- adjustable (for sliders, pickers)
-- switch, checkbox (uncommon, use switch)
-- header (screen titles)
+- button, link, text (static labels)
+- textfield (text inputs)
+- search (search inputs)
+- adjustable (sliders, pickers, steppers)
+- switch, checkbox, radio, radiogroup
+- header (screen titles, section headers)
 - image, imagebutton
-- tab (for bottom nav)
-- none (decorative elements)
+- tab, tablist
+- alert (important announcements)
+- progressbar, timer
+- menu, menubar, menuitem
+- toolbar
+- togglebutton
+- keyboardkey
+- combobox, spinbutton
+- scrollbar (usually not focusable)
+- grid (for list structures)
+- summary (quick status indicators)
+- none (decorative elements - skip in focus order)
 
 PLATFORM-SPECIFIC RULES:
 
@@ -66,6 +78,20 @@ React Native:
 - Card tap targets include entire card boundary
 - Decorative images get role "none"
 - Group related elements (e.g., card content before card actions)
+
+SEMANTIC GROUPING RULES:
+- If a component is clearly interactive (Input, Button, Tab, Switch), treat it as ONE focusable item
+- Do NOT decompose interactive components into their child elements
+- Example: "Reps Input" containing "50" text → focus ONLY the input, not the text
+- Example: "Submit Button" containing "Submit" label → focus ONLY the button
+- For cards/list items: Focus the container only if tappable; otherwise focus interactive children
+- Text content inside focusable elements is announced as the element's label, not a separate focus stop
+
+SMART LABELING:
+- If component name is generic ("Frame 24", "Div"), infer semantic name from context
+- For inputs with nearby labels: Use label text ("Reps" label + input → "Reps Input")
+- For buttons with interior text: Use text as label ("Submit" text → "Submit Button")
+- Always output human-readable labels in the focus order
 
 EXAMPLE (Web):
 Platform: web
@@ -107,5 +133,6 @@ Output:
 
 ## Version History
 
+- **v1.1** (2024-10-20): Added complete React Native roles, semantic grouping rules, and smart labeling
 - **v1** (2024-10-18): Initial platform-aware prompt with Web/React Native rules
 
