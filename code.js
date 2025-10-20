@@ -282,25 +282,19 @@ async function renderFocusOrderNote(frame, annotation) {
   // Size to content (autoLayout)
   try { note.layoutAlign = 'INHERIT'; } catch (e) {}
 
-  // Position: top-right inside the frame with 12px inset
-  var inset = 12;
-  var nx = Math.max(0, frame.width - note.width - inset);
-  var ny = inset;
-  note.x = frame.x + nx;
-  note.y = frame.y + ny;
+  // Position: to the right of the frame (outside, not covering content)
+  var spacing = 20;
+  note.x = frame.x + frame.width + spacing;
+  note.y = frame.y;
 
-  // Make the note a child of the same parent as the frame (overlay look),
-  // so it isn't clipped by frame's clipContent.
+  // Make the note a child of the same parent as the frame
   if (frame.parent) {
     frame.parent.appendChild(note);
-    // keep above the frame in z-order
-    try { note.relativeTransform = frame.relativeTransform; } catch (e) {}
-    note.x = frame.x + nx;
-    note.y = frame.y + ny;
   } else {
+    // Fallback: attach to frame itself
     frame.appendChild(note);
-    note.x = nx;
-    note.y = ny;
+    note.x = frame.width + spacing;
+    note.y = 0;
   }
 }
 
@@ -348,7 +342,7 @@ async function drawFocusChips(frame, annotation) {
   for (var i = 0; i < order.length; i++) {
     var item = order[i];
     var num = i + 1;
-    var chipSize = 36;
+    var chipSize = 28;  // Smaller chips for less visual clutter
     
     // Hybrid approach: Use Figma node coordinates for accuracy
     var node = figma.getNodeById(item.id);
@@ -400,7 +394,7 @@ async function drawFocusChips(frame, annotation) {
     }
     
     text.characters = String(num);
-    text.fontSize = 18;
+    text.fontSize = 14;  // Smaller font to match smaller chip size
     text.fills = [{ type: 'SOLID', color: { r: 1, g: 1, b: 1 } }];
     text.textAlignHorizontal = 'CENTER';
     text.textAlignVertical = 'CENTER';
