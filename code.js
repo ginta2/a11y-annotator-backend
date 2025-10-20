@@ -447,21 +447,14 @@ async function applyAnnotations(annos) {
   // Remove old annotations
   removeOldNotes(selection);
   
-  // Try to draw chips first (if coordinates present)
-  var hasCoordinates = annos[0].order.some(function(item) {
-    return item.position && typeof item.position.x === 'number';
-  });
+  // Always try to draw chips using Figma node coordinates (hybrid approach)
+  var chipsDrawn = await drawFocusChips(selection, annos[0]);
   
-  if (hasCoordinates) {
-    var chipsDrawn = await drawFocusChips(selection, annos[0]);
-    await renderFocusOrderNote(selection, annos[0]);
-    
-    if (!chipsDrawn) {
-      figma.notify('A11y: Chips failed, showing note only', { timeout: 3000 });
-    }
-  } else {
-    // Fallback to note only
-    await renderFocusOrderNote(selection, annos[0]);
+  // Also render yellow note for reference
+  await renderFocusOrderNote(selection, annos[0]);
+  
+  if (!chipsDrawn) {
+    console.warn('[A11y] No chips were drawn, but note is available');
   }
 
   lastChecksum = newChecksum;
